@@ -21,6 +21,7 @@ type Property struct {
 
 type Node struct {
 	id         string
+	name string
 	nType      string
 	properties map[string]Property
 }

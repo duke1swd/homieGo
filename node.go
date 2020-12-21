@@ -3,7 +3,7 @@ package homie
 // Node methods
 
 // Create and return a node
-func (device Device) NewNode(id, nType string) Node {
+func (device Device) NewNode(id, name, nType string) Node {
 	var node Node
 
 	id = validate(id, false)
@@ -17,6 +17,7 @@ func (device Device) NewNode(id, nType string) Node {
 		panic("Device " + device.name + " already has a node " + id)
 	}
 
+	node.name = name
 	node.nType = nType
 	node.properties = make(map[string]Property)
 
@@ -27,4 +28,12 @@ func (device Device) NewNode(id, nType string) Node {
 
 func (n Node) Id() string {
 	return n.id
+}
+
+func (n Node) Name() string {
+	return n.name
+}
+
+func (n Node) NodeType() {
+	return nType
 }
