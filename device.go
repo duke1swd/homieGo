@@ -1,4 +1,4 @@
-package homieGo
+package homie
 
 func NewDevice(id, name string) Device {
 	var device Device
@@ -15,22 +15,22 @@ func NewDevice(id, name string) Device {
 	device.state = "init"
 	device.nodes = make(map[string]Node)
 	device.extensions = ""
-	device.implementation = "homieGo"
+	device.implementation = "homieGo 0.1.0"
 	device.configDone = false
 
 	devices[id] = device
 
-	return Device
+	return device
 }
 
 // Publish everything about this device.
 // This is done on connection to (and reconnection to) the mqtt broker
-func (Device device) publishState() {
+func (device Device) publishState() {
 }
 
 // Run the control loop
 // All error conditions return by panic.
 // No normaal return
-func (Device device) Run() {
-	device.configDone = true;
+func (device Device) Run() {
+	device.configDone = true
 }

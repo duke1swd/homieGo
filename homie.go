@@ -33,7 +33,7 @@ type Device struct {
 	nodes          map[string]Node // indexed by node ID
 	extensions     string          // always null string
 	implementation string          // always "homieGo"
-	configDone bool // 2 states, configuring and configured
+	configDone     bool            // 2 states, configuring and configured
 }
 
 var (
