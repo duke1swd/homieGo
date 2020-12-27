@@ -3,7 +3,7 @@ package homie
 // Node methods
 
 // Create and return a node
-func (device Device) NewNode(id, name, nType string) Node {
+func (device *Device) NewNode(id, name, nType string, handler func(d Device, n Node, p Property, a string)) Node {
 	var node Node
 
 	id = validate(id, false)
@@ -20,10 +20,55 @@ func (device Device) NewNode(id, name, nType string) Node {
 	node.name = name
 	node.nType = nType
 	node.properties = make(map[string]Property)
+	node.handler = handler
+	node.device = device
 
 	device.nodes[id] = node
 
 	return node
+}
+
+func (n *Node) Advertise(id string, dataType int) Property {
+	var property Property
+
+	id = validate(id, false)
+
+	if n.device.configDone {
+		panic("Cannot add property " + id + " to node " + n.name +
+			" after calling device.Run()")
+	}
+
+	if _, ok := n.properties[id]; ok {
+		panic("duplicate property id " + id + " in node " + n.name)
+	}
+
+	property.id = id
+	property.settable = false
+
+	switch dataType {
+	case DtString:
+	case DtInteger:
+	case DtFloat:
+	case DtPercent:
+	case DtBoolean:
+	case DtEnum:
+	case DtColor:
+	case DtDateTime:
+	case DtDuration:
+	default:
+		panic("Invalid data type supplied for property " + id + " in node " + n.name)
+	}
+	property.dataType = dataType
+
+	property.format = ""
+	property.unit = ""
+
+	property.handler = nil
+	property.attributes = make(map[string]Attribute)
+	n.properties[id] = property
+	property.node = n
+
+	return property
 }
 
 func (n Node) Id() string {
@@ -34,6 +79,6 @@ func (n Node) Name() string {
 	return n.name
 }
 
-func (n Node) NodeType() {
-	return nType
+func (n Node) NodeType() string {
+	return n.nType
 }
