@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-func NewDevice(id, name string) Device {
+func NewDevice(id, name string) *Device {
 	var device Device
 
 	id = validate(id, false)
@@ -18,7 +18,7 @@ func NewDevice(id, name string) Device {
 	device.name = name
 	device.state = "init"
 	device.implementation = "homieGo 0.1.0"
-	device.nodes = make(map[string]Node)
+	device.nodes = make(map[string]*Node)
 
 	device.extensions = "org.homie.legacy-stats:0.1.1:[4.x],org.homie.legacy-firmware:0.1.1:[4.x]"
 	device.statsInterval = time.Duration(60) * time.Second
@@ -27,12 +27,12 @@ func NewDevice(id, name string) Device {
 
 	device.configDone = false
 
-	devices[id] = device
+	devices[id] = &device
 
-	return device
+	return &device
 }
 
-func (d Device) SetGlobalHandler(handler func(d Device, n Node, p Property, a Attribute, value string)) {
+func (d Device) SetGlobalHandler(handler func(d Device, n Node, p Property, value string)) {
 	d.globalHandler = handler
 }
 

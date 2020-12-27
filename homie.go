@@ -7,13 +7,6 @@ import (
 
 // Type hierarchy
 
-// All levels can have attributes, but at Device and Node level they are controller
-// by this code.
-type Attribute struct {
-	id    string
-	value string
-}
-
 // These are the allow Property data types, as per v4.0.0 convention
 const (
 	DtString = iota
@@ -46,14 +39,13 @@ var propertyUnits map[string]bool = map[string]bool{
 }
 
 type Property struct {
-	id         string
-	node       *Node
-	settable   bool // hardwired attribute
-	dataType   int  // must be one of the defined data types
-	handler    func(d Device, n Node, p Property, a string)
-	format     string
-	unit       string
-	attributes map[string]Attribute
+	id       string
+	node     *Node
+	settable bool // hardwired attribute
+	dataType int  // must be one of the defined data types
+	handler  func(d Device, n Node, p Property, a string)
+	format   string
+	unit     string
 }
 
 type PropertyMessage struct {
@@ -68,20 +60,20 @@ type Node struct {
 	name       string
 	nType      string
 	handler    func(d Device, n Node, p Property, a string)
-	properties map[string]Property
+	properties map[string]*Property
 }
 
 type Device struct {
 	id               string
-	protocol         string          // Homie level.  Always 4.0.1
-	name             string          // Friendly name
-	state            string          // Fixed set of states possible
-	nodes            map[string]Node // indexed by node ID
-	extensions       string          // We currently support two, legacy-stats and legacy-firmware
-	implementation   string          // always "homieGo"
-	configDone       bool            // 2 states, configuring and configured
+	protocol         string           // Homie level.  Always 4.0.1
+	name             string           // Friendly name
+	state            string           // Fixed set of states possible
+	nodes            map[string]*Node // indexed by node ID
+	extensions       string           // We currently support two, legacy-stats and legacy-firmware
+	implementation   string           // always "homieGo"
+	configDone       bool             // 2 states, configuring and configured
 	connected        bool
-	globalHandler    func(d Device, n Node, p Property, a Attribute, value string)
+	globalHandler    func(d Device, n Node, p Property, value string)
 	broadcastHandler func(d Device, level, value string)
 	loop             func(d Device)
 
@@ -97,9 +89,9 @@ type Device struct {
 }
 
 var (
-	devices map[string]Device
+	devices map[string]*Device
 )
 
 func init() {
-	devices = make(map[string]Device)
+	devices = make(map[string]*Device)
 }

@@ -3,7 +3,7 @@ package homie
 // Node methods
 
 // Create and return a node
-func (device *Device) NewNode(id, name, nType string, handler func(d Device, n Node, p Property, a string)) Node {
+func (device *Device) NewNode(id, name, nType string, handler func(d Device, n Node, p Property, a string)) *Node {
 	var node Node
 
 	id = validate(id, false)
@@ -19,16 +19,16 @@ func (device *Device) NewNode(id, name, nType string, handler func(d Device, n N
 
 	node.name = name
 	node.nType = nType
-	node.properties = make(map[string]Property)
+	node.properties = make(map[string]*Property)
 	node.handler = handler
 	node.device = device
 
-	device.nodes[id] = node
+	device.nodes[id] = &node
 
-	return node
+	return &node
 }
 
-func (n *Node) Advertise(id string, dataType int) Property {
+func (n *Node) Advertise(id string, dataType int) *Property {
 	var property Property
 
 	id = validate(id, false)
@@ -64,11 +64,10 @@ func (n *Node) Advertise(id string, dataType int) Property {
 	property.unit = ""
 
 	property.handler = nil
-	property.attributes = make(map[string]Attribute)
-	n.properties[id] = property
+	n.properties[id] = &property
 	property.node = n
 
-	return property
+	return &property
 }
 
 func (n Node) Id() string {
