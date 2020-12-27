@@ -79,24 +79,37 @@ func (d *Device) Run() {
 	}
 
 	for {
+		// process reconnections
 		if !d.connected {
+			// TODO
 			// connect
 		}
+
+		// Call the user's loop function
 		if d.loop != nil {
 			d.loop(d)
 		}
-		if d.period > 0 {
-			select {
-			case _ = <-ticker.C:
-				continue
-			case message := <-d.publishChannel:
-				message.publish()
-			}
-		} else {
+
+		// Drain the publish channel
+		for {
+			// non-blocking look for an incoming publish message
 			select {
 			case message := <-d.publishChannel:
 				message.publish()
 			default:
+				break
+			}
+		}
+
+		// now sleep for awhile if necessary
+		if d.period > 0 {
+			for {
+				select {
+				case message := <-d.publishChannel:
+					message.publish()
+				case _ = <-ticker.C:
+					break
+				}
 			}
 		}
 	}
