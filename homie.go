@@ -20,7 +20,7 @@ const (
 	DtDuration
 )
 
-// These are the allowed units.  Units however, are optional.
+// These are the allowed Property units.  Units however, are optional.
 var propertyUnits map[string]bool = map[string]bool{
 	"°C":     true, // degrees C
 	"°F":     true, // degrees F
@@ -46,6 +46,7 @@ type Property struct {
 	handler  func(d Device, n Node, p Property, a string)
 	format   string
 	unit     string
+	value    string
 }
 
 type PropertyMessage struct {
@@ -73,9 +74,10 @@ type Device struct {
 	implementation   string           // always "homieGo"
 	configDone       bool             // 2 states, configuring and configured
 	connected        bool
-	globalHandler    func(d Device, n Node, p Property, value string)
-	broadcastHandler func(d Device, level, value string)
-	loop             func(d Device)
+	period           time.Duration
+	globalHandler    func(d *Device, n Node, p Property, value string)
+	broadcastHandler func(d *Device, level, value string)
+	loop             func(d *Device)
 
 	// Stuff for the stats extension.  At the moment all we do is publish uptime.
 	statsInterval time.Duration // how often to publish stats
@@ -86,6 +88,9 @@ type Device struct {
 	mac       string // NYI
 	fwName    string
 	fwVersion string
+
+	// This channel is used to ensure that messages are not sent from an event handler
+	publishChannel chan PropertyMessage
 }
 
 var (

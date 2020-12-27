@@ -1,5 +1,7 @@
 package homie
 
+import ()
+
 // Property methods
 
 func (p Property) Settable(handler func(d Device, n Node, p Property, value string)) {
@@ -46,5 +48,20 @@ func (p *Property) SetProperty() PropertyMessage {
 	return m
 }
 
-func (m PropertyMessage) Send(value string) {
+func validateValue(p *Property, value string) error {
+	// TODO add checking
+	return nil
+}
+
+// Returns an error if the property's value is wrong format, unit, or whatever.
+func (m PropertyMessage) Send(value string) error {
+	m.property.value = value
+	err := validateValue(m.property, value)
+	if m.property.node.device.configDone {
+		m.property.node.device.publishChannel <- m
+	}
+	return err
+}
+
+func (m PropertyMessage) publish() {
 }
