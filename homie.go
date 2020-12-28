@@ -2,8 +2,11 @@ package homie
 
 import (
 	"time"
-	//"github.com/eclipse/paho.mqtt.golang"
+	"github.com/eclipse/paho.mqtt.golang"
 )
+
+const mqttClientIDPrefix = "homieGo"
+const defaultTopicBase = "homie"
 
 // Type hierarchy
 
@@ -12,12 +15,9 @@ const (
 	DtString = iota
 	DtInteger
 	DtFloat
-	DtPercent
 	DtBoolean
 	DtEnum
 	DtColor
-	DtDateTime
-	DtDuration
 )
 
 // These are the allowed Property units.  Units however, are optional.
@@ -40,6 +40,7 @@ var propertyUnits map[string]bool = map[string]bool{
 
 type Property struct {
 	id       string
+	name string
 	node     *Node
 	settable bool // hardwired attribute
 	dataType int  // must be one of the defined data types
@@ -74,10 +75,13 @@ type Device struct {
 	implementation   string           // always "homieGo"
 	configDone       bool             // 2 states, configuring and configured
 	connected        bool
+	topicBase        string // default is "homie"
 	period           time.Duration
 	globalHandler    func(d *Device, n Node, p Property, value string)
 	broadcastHandler func(d *Device, level, value string)
 	loop             func(d *Device)
+	client *mqtt.Client
+	tokens []mqtt.Token
 
 	// Stuff for the stats extension.  At the moment all we do is publish uptime.
 	statsInterval time.Duration // how often to publish stats
@@ -91,6 +95,9 @@ type Device struct {
 
 	// This channel is used to ensure that messages are not sent from an event handler
 	publishChannel chan PropertyMessage
+
+	// This channel reflects connection status changes back to the run() method from the event handler.
+	connectChannel chan bool
 }
 
 var (

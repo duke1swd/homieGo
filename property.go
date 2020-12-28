@@ -48,6 +48,47 @@ func (p *Property) SetProperty() PropertyMessage {
 	return m
 }
 
+func (p *Property) publish(topic, payload string) {
+	return p.node.publish(p.id + "/" + topic, payload)
+}
+
+func (p *Property) processConnect() {
+	var t string
+
+	p.publish("$name", p.name)
+
+	switch p.dataType {
+	case DtString:
+		t = "string"
+	case DtInteger:
+		t = "integer"
+	case DtFloat:
+		t = "float"
+	case DtBoolean:
+		t = "boolean"
+	case DtEnum:
+		t = "enum"
+	case DtColor:
+		t = "color"
+	}
+	p.publish("$datatype", t)
+
+	if len(p.format) > 0 {
+		p.publish("$format", p.format)
+	}
+
+	if p.settable {
+		p.publish("$settable", "true")
+	}
+
+	if len(p.unit) > 0 {
+		p.publish("$unit", p.unit)
+	}
+
+	// Finally spit out the value of this property.
+	p.node.publish(p.id, p.value)
+}
+
 func validateValue(p *Property, value string) error {
 	// TODO add checking
 	return nil

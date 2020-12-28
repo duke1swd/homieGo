@@ -2,6 +2,8 @@ package homie
 
 import (
 	"time"
+	"strconv"
+	"github.com/eclipse/paho.mqtt.golang"
 )
 
 func NewDevice(id, name string) *Device {
@@ -24,10 +26,12 @@ func NewDevice(id, name string) *Device {
 	device.statsInterval = time.Duration(60) * time.Second
 	device.fwName = "unknown"
 	device.fwVersion = "unknown"
+	device.topicBase = defaultTopicBase
 
 	device.configDone = false
 
 	device.publishChannel = make(chan PropertyMessage, 100)
+	device.connectChannel = make(chan bool, 16)
 	device.period = time.Second / time.Duration(4)
 
 	devices[id] = &device
@@ -51,9 +55,70 @@ func (d *Device) IsConnected() bool {
 	return d.connected
 }
 
+func (d *Device) SetTopicBase(b string) {
+	d.topicBase = validate(b, false)
+}
+
+func (d *Device) topic(t string) string {
+	return d.topicBase + "/" + d.id + " / " + t
+}
+
+func (d *Device) publish(t, p string) {
+	token := (*d.client).Publish(d.topic(t), 1, true, p)
+	d.tokens = append(d.tokens, token)
+}
+
+func durationToSeconds(d time.Duration) string {
+	n := int64(d) / int64(time.Second)
+	return strconv.FormatInt(n, 10)
+}
+
 // Publish everything about this device.
 // This is done on connection to (and reconnection to) the mqtt broker
-func (d *Device) publishState() {
+func (d *Device) processConnect() {
+	// discard any tokens.  There should be none.
+	d.tokens = make([]mqtt.Token, 100)
+
+	// Emit the required properties.
+	d.publish("$state", "init")
+	d.publish("$homie", d.protocol)
+	d.publish("$name", d.name)
+	d.publish("$extensions", d.extensions)
+	d.publish("$implementation", d.implementation)
+
+	// the extensions
+	d.publish("$stats/interval", durationToSeconds(d.statsInterval))
+	d.publish("$stats/uptime", durationToSeconds(time.Since(d.statsBootTime)))
+	d.publish("$localip", d.localIP)
+	d.publish("$mac", d.mac)
+	d.publish("$fw/name", d.fwName)
+	d.publish("$fw/version", d.fwVersion)
+
+	// Spit out the nodes
+	if len(d.nodes) > 0 {
+		s := ""
+		for n, _ := range(d.nodes) {
+			if len(s) > 0 {
+				s = s + "," + n
+			} else {
+				s = n
+			}
+		}
+		d.publish("$nodes", s)
+
+		for _, n := range(d.nodes) {
+			n.processConnect()
+		}
+	} else {
+		d.publish("$nodes", "")
+	}
+
+	// wait for all publications
+	for _, t := range(d.tokens) {
+		t.Wait()
+	}
+	d.connected = true
+	d.publish("$state", "ready")
 }
 
 func (d *Device) setLoopPeriod(period time.Duration) {
@@ -79,23 +144,21 @@ func (d *Device) Run() {
 	}
 
 	for {
-		// process reconnections
-		if !d.connected {
-			// TODO
-			// connect
-		}
-
 		// Call the user's loop function
 		if d.loop != nil {
 			d.loop(d)
 		}
 
-		// Drain the publish channel
+		// Drain the channels
 		for {
 			// non-blocking look for an incoming publish message
 			select {
 			case message := <-d.publishChannel:
 				message.publish()
+			case connected := <-d.connectChannel:
+				if connected {
+					go d.processConnect()
+				}
 			default:
 				break
 			}
@@ -107,6 +170,10 @@ func (d *Device) Run() {
 				select {
 				case message := <-d.publishChannel:
 					message.publish()
+				case connected := <-d.connectChannel:
+					if connected {
+						go d.processConnect()
+					}
 				case _ = <-ticker.C:
 					break
 				}

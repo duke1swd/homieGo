@@ -28,7 +28,7 @@ func (device *Device) NewNode(id, name, nType string, handler func(d Device, n N
 	return &node
 }
 
-func (n *Node) Advertise(id string, dataType int) *Property {
+func (n *Node) Advertise(id, name string, dataType int) *Property {
 	var property Property
 
 	id = validate(id, false)
@@ -43,18 +43,16 @@ func (n *Node) Advertise(id string, dataType int) *Property {
 	}
 
 	property.id = id
+	property.name = name
 	property.settable = false
 
 	switch dataType {
 	case DtString:
 	case DtInteger:
 	case DtFloat:
-	case DtPercent:
 	case DtBoolean:
 	case DtEnum:
 	case DtColor:
-	case DtDateTime:
-	case DtDuration:
 	default:
 		panic("Invalid data type supplied for property " + id + " in node " + n.name)
 	}
@@ -80,4 +78,32 @@ func (n Node) Name() string {
 
 func (n Node) NodeType() string {
 	return n.nType
+}
+
+func (n *Node) publish(topic, payload string) {
+	return n.device.publish(n.id + "/" + topic, payload)
+}
+
+func (n *Node) processConnect() {
+	n.publish("$name", n.name)
+	n.publish("$type", n.nType)
+
+	// Spit out the properties
+	if len(n.properties) > 0 {
+		s := ""
+		for n, _ := range(n.properties) {
+			if len(s) > 0 {
+				s = s + "," + n
+			} else {
+				s = n
+			}
+		}
+		n.publish("$properties", s)
+
+		for _, p := range(d.nodes) {
+			p.processConnect()
+		}
+	} else {
+		d.publish("$properties", "")
+	}
 }
