@@ -153,6 +153,7 @@ func (d *Device) Run() {
 		}
 
 		// Drain the channels
+	drain:
 		for {
 			// Process any accumulated publish tokens
 			for d.tokens.Len() > 0 {
@@ -175,7 +176,7 @@ func (d *Device) Run() {
 					go d.processConnect()
 				}
 			default:
-				break
+				break drain
 			}
 		}
 
