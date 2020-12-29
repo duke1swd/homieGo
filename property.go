@@ -49,7 +49,7 @@ func (p *Property) SetProperty() PropertyMessage {
 }
 
 func (p *Property) publish(topic, payload string) {
-	return p.node.publish(p.id + "/" + topic, payload)
+	p.node.publish(p.id+"/"+topic, payload)
 }
 
 func (p *Property) processConnect() {

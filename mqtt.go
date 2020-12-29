@@ -5,8 +5,9 @@ package homie
 //
 
 import (
-	"time"
 	"github.com/eclipse/paho.mqtt.golang"
+	"log"
+	"time"
 )
 
 var clientToDevice map[mqtt.Client]Device
@@ -39,8 +40,8 @@ func (d Device) mqttSetup() {
 
 	options := mqtt.NewClientOptions()
 	options.SetCleanSession(false)
-	options.SetClientID(clientIDPrefix + "-" + d.id)
-	options.SetAutoConnect(true)
+	options.SetClientID(mqttClientIDPrefix + "-" + d.id)
+	options.SetAutoReconnect(true)
 	options.SetConnectRetry(true)
 	options.SetConnectRetryInterval(time.Minute)
 	options.SetConnectionLostHandler(connectionLostHandler)
@@ -50,4 +51,11 @@ func (d Device) mqttSetup() {
 
 	d.client = mqtt.NewClient(options)
 	d.client.Connect()
+}
+
+// Check for publish errors. If found, log them.
+// Token t has already been waited for.
+func (d Device) tokenFinalize(t *mqtt.Token) {
+	e := (*t).Error()
+	log.Printf("Publish error %v\n", e)
 }

@@ -81,7 +81,7 @@ func (n Node) NodeType() string {
 }
 
 func (n *Node) publish(topic, payload string) {
-	return n.device.publish(n.id + "/" + topic, payload)
+	n.device.publish(n.id+"/"+topic, payload)
 }
 
 func (n *Node) processConnect() {
@@ -91,7 +91,7 @@ func (n *Node) processConnect() {
 	// Spit out the properties
 	if len(n.properties) > 0 {
 		s := ""
-		for n, _ := range(n.properties) {
+		for n, _ := range n.properties {
 			if len(s) > 0 {
 				s = s + "," + n
 			} else {
@@ -100,10 +100,10 @@ func (n *Node) processConnect() {
 		}
 		n.publish("$properties", s)
 
-		for _, p := range(d.nodes) {
+		for _, p := range n.properties {
 			p.processConnect()
 		}
 	} else {
-		d.publish("$properties", "")
+		n.publish("$properties", "")
 	}
 }

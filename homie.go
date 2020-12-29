@@ -1,8 +1,9 @@
 package homie
 
 import (
-	"time"
+	"container/list"
 	"github.com/eclipse/paho.mqtt.golang"
+	"time"
 )
 
 const mqttClientIDPrefix = "homieGo"
@@ -40,7 +41,7 @@ var propertyUnits map[string]bool = map[string]bool{
 
 type Property struct {
 	id       string
-	name string
+	name     string
 	node     *Node
 	settable bool // hardwired attribute
 	dataType int  // must be one of the defined data types
@@ -80,8 +81,8 @@ type Device struct {
 	globalHandler    func(d *Device, n Node, p Property, value string)
 	broadcastHandler func(d *Device, level, value string)
 	loop             func(d *Device)
-	client *mqtt.Client
-	tokens []mqtt.Token
+	client           mqtt.Client
+	tokens           *list.List
 
 	// Stuff for the stats extension.  At the moment all we do is publish uptime.
 	statsInterval time.Duration // how often to publish stats

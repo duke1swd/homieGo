@@ -1,9 +1,10 @@
 package homie
 
 import (
-	"time"
-	"strconv"
+	"container/list"
 	"github.com/eclipse/paho.mqtt.golang"
+	"strconv"
+	"time"
 )
 
 func NewDevice(id, name string) *Device {
@@ -33,6 +34,7 @@ func NewDevice(id, name string) *Device {
 	device.publishChannel = make(chan PropertyMessage, 100)
 	device.connectChannel = make(chan bool, 16)
 	device.period = time.Second / time.Duration(4)
+	device.tokens = list.New()
 
 	devices[id] = &device
 
@@ -64,8 +66,8 @@ func (d *Device) topic(t string) string {
 }
 
 func (d *Device) publish(t, p string) {
-	token := (*d.client).Publish(d.topic(t), 1, true, p)
-	d.tokens = append(d.tokens, token)
+	token := d.client.Publish(d.topic(t), 1, true, p)
+	d.tokens.PushBack(&token)
 }
 
 func durationToSeconds(d time.Duration) string {
@@ -76,9 +78,6 @@ func durationToSeconds(d time.Duration) string {
 // Publish everything about this device.
 // This is done on connection to (and reconnection to) the mqtt broker
 func (d *Device) processConnect() {
-	// discard any tokens.  There should be none.
-	d.tokens = make([]mqtt.Token, 100)
-
 	// Emit the required properties.
 	d.publish("$state", "init")
 	d.publish("$homie", d.protocol)
@@ -97,7 +96,7 @@ func (d *Device) processConnect() {
 	// Spit out the nodes
 	if len(d.nodes) > 0 {
 		s := ""
-		for n, _ := range(d.nodes) {
+		for n, _ := range d.nodes {
 			if len(s) > 0 {
 				s = s + "," + n
 			} else {
@@ -106,7 +105,7 @@ func (d *Device) processConnect() {
 		}
 		d.publish("$nodes", s)
 
-		for _, n := range(d.nodes) {
+		for _, n := range d.nodes {
 			n.processConnect()
 		}
 	} else {
@@ -114,8 +113,12 @@ func (d *Device) processConnect() {
 	}
 
 	// wait for all publications
-	for _, t := range(d.tokens) {
-		t.Wait()
+	for d.tokens.Len() > 0 {
+		le := d.tokens.Front()
+		t := le.Value.(*mqtt.Token)
+		(*t).Wait()
+		d.tokenFinalize(t)
+		d.tokens.Remove(le)
 	}
 	d.connected = true
 	d.publish("$state", "ready")
@@ -151,6 +154,18 @@ func (d *Device) Run() {
 
 		// Drain the channels
 		for {
+			// Process any accumulated publish tokens
+			for d.tokens.Len() > 0 {
+				le := d.tokens.Front()
+				t := le.Value.(*mqtt.Token)
+				if (*t).WaitTimeout(time.Duration(0)) {
+					d.tokenFinalize(t)
+					d.tokens.Remove(le)
+				} else {
+					break
+				}
+			}
+
 			// non-blocking look for an incoming publish message
 			select {
 			case message := <-d.publishChannel:
