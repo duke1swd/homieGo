@@ -98,25 +98,31 @@ func getAllMqtt(t *testing.T) map[string]string {
 	return allTopics
 }
 
-func verifyMqtt(t *testing.T, messages map[string]string) map[string]string {
+func verifyMqtt(t *testing.T, messageMaps ...map[string]string) map[string]string {
 	getMqttStuff(t)
 
 	// Look for the messages we expect
-	for k, v := range messages {
-		if v2, ok := allTopics[k]; ok {
-			if v != "*" && v != v2 {
-				t.Errorf("For topic %s expected value %s found value %s", k, v, v2)
+	for _, messages := range messageMaps {
+		for k, v := range messages {
+			if v2, ok := allTopics[k]; ok {
+				if v != "*" && v != v2 {
+					t.Errorf("For topic %s expected value %s found value %s", k, v, v2)
+				}
+			} else {
+				t.Errorf("Did not find topic %s", k)
 			}
-		} else {
-			t.Errorf("Did not find topic %s", k)
 		}
 	}
 
 	// Look for messages we did not expect
+seekLoop:
 	for k, v := range allTopics {
-		if _, ok := messages[k]; !ok {
-			t.Errorf("Did not expect %s: %s", k, v)
+		for _, messages := range messageMaps {
+			if _, ok := messages[k]; ok {
+				continue seekLoop
+			}
 		}
+		t.Errorf("Did not expect %s: %s", k, v)
 	}
 
 	return allTopics

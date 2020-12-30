@@ -22,6 +22,14 @@ var (
 		"testing/test-device-0000/$stats/interval": "60",
 		"testing/test-device-0000/$fw/version":     "unknown",
 	}
+
+	nodeMessages = map[string]string{
+		"testing/test-device-0000/a-node/$type":       "test",
+		"testing/test-device-0000/another-node/$name": "Name another-node",
+		"testing/test-device-0000/another-node/$type": "test",
+		"testing/test-device-0000/$nodes":             "a-node,another-node",
+		"testing/test-device-0000/a-node/$name":       "Name a-node",
+	}
 )
 
 func init() {
@@ -34,17 +42,26 @@ func createTestDevice() *Device {
 	return d
 }
 
+func myTestHandler(d *Device, n *Node, p *Property, a string) {
+}
+
+func createTestNode(d *Device, id string) {
+	d.NewNode(id, "Name "+id, "test", myTestHandler)
+}
+
 func TestPublication(t *testing.T) {
 	getTestClient(t)
 	cleanMqtt(t)
 	d := createTestDevice()
+	createTestNode(d, "a-node")
+	createTestNode(d, "another-node")
 
 	// Run for 1 second
 	c, cfl := context.WithTimeout(context.Background(), time.Second*time.Duration(1))
 	d.RunWithContext(c)
 	cfl()
 
-	stuff := verifyMqtt(t, deviceMessages)
+	stuff := verifyMqtt(t, deviceMessages, nodeMessages)
 
 	// check up time
 	for topic, payload := range stuff {

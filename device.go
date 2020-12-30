@@ -42,7 +42,7 @@ func NewDevice(id, name string) *Device {
 	return &device
 }
 
-func (d *Device) SetGlobalHandler(handler func(d *Device, n Node, p Property, value string)) {
+func (d *Device) SetGlobalHandler(handler func(d *Device, n *Node, p *Property, value string)) {
 	d.globalHandler = handler
 }
 

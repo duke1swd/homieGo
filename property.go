@@ -4,7 +4,7 @@ import ()
 
 // Property methods
 
-func (p Property) Settable(handler func(d Device, n Node, p Property, value string)) {
+func (p Property) Settable(handler func(d *Device, n *Node, p *Property, value string)) {
 	p.settable = true
 	p.handler = handler
 }
