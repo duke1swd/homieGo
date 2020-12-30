@@ -26,6 +26,7 @@ func NewDevice(id, name string) *Device {
 
 	device.extensions = "org.homie.legacy-stats:0.1.1:[4.x],org.homie.legacy-firmware:0.1.1:[4.x]"
 	device.statsInterval = time.Duration(60) * time.Second
+	device.statsBootTime = time.Now()
 	device.fwName = "unknown"
 	device.fwVersion = "unknown"
 	device.topicBase = defaultTopicBase
@@ -62,7 +63,7 @@ func (d *Device) SetTopicBase(b string) {
 }
 
 func (d *Device) topic(t string) string {
-	return d.topicBase + "/" + d.id + " / " + t
+	return d.topicBase + "/" + d.id + "/" + t
 }
 
 func (d *Device) publish(t, p string) {
@@ -149,6 +150,7 @@ func (d *Device) RunWithContext(runContext context.Context) {
 
 	d.configDone = true
 	d.connected = false
+	d.mqttSetup()
 	if d.period > 0 {
 		ticker = time.NewTicker(d.period)
 	}

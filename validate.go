@@ -5,8 +5,8 @@ package homie
 func validate(inputId string, attr bool) string {
 	bytes := []byte(inputId)
 
-	if bytes[0] == '_' {
-		panic("Identifier may not begin with '_'")
+	if bytes[0] == '-' {
+		panic("Identifier may not begin with '-'")
 	}
 
 	for i, b := range bytes {
@@ -15,7 +15,7 @@ func validate(inputId string, attr bool) string {
 		} else if (b < 'a' || b > 'z') &&
 			(b < '0' || b > '9') &&
 			(i != 0 || b != '$' || !attr) &&
-			b != '_' {
+			b != '-' {
 			panic("Invalid character in identifier")
 		}
 	}

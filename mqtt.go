@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-var clientToDevice map[mqtt.Client]Device
+var clientToDevice map[mqtt.Client]*Device
 
 func init() {
-	clientToDevice = make(map[mqtt.Client]Device)
+	clientToDevice = make(map[mqtt.Client]*Device)
 }
 
 func connectionLostHandler(client mqtt.Client, e error) {
@@ -28,18 +28,19 @@ func connectionLostHandler(client mqtt.Client, e error) {
 func connectionFound(client mqtt.Client) {
 	d, ok := clientToDevice[client]
 	if !ok {
-		panic("Connection Lost Handler cannot find device in map")
+		panic("Connection Found Handler cannot find device in map")
 	}
 	d.connectChannel <- true
 }
 
-func (d Device) mqttSetup() {
+func (d *Device) mqttSetup() {
 	if d.connected {
 		panic("called setup on a connected device")
 	}
 
 	options := mqtt.NewClientOptions()
 	options.SetCleanSession(false)
+	options.AddBroker("tcp://192.168.1.13:1883")
 	options.SetClientID(mqttClientIDPrefix + "-" + d.id)
 	options.SetAutoReconnect(true)
 	options.SetConnectRetry(true)
@@ -50,12 +51,15 @@ func (d Device) mqttSetup() {
 	options.SetWill(d.topic("$state"), "lost", 1, true)
 
 	d.client = mqtt.NewClient(options)
-	d.client.Connect()
+	clientToDevice[d.client] = d
+	token := d.client.Connect()
+	d.tokenChannel <- &token
 }
 
 // Check for publish errors. If found, log them.
 // Token t has already been waited for.
-func (d Device) tokenFinalize(t *mqtt.Token) {
-	e := (*t).Error()
-	log.Printf("Publish error %v\n", e)
+func (d *Device) tokenFinalize(t *mqtt.Token) {
+	if e := (*t).Error(); e != nil {
+		log.Printf("Publish error %v\n", e)
+	}
 }

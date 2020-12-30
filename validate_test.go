@@ -10,7 +10,7 @@ import (
 
 func TestValidate_0(t *testing.T) {
 	// test a valid id
-	i := "now_is_the_time"
+	i := "now-is-the-time"
 	s := validate(i, false)
 	if i != s {
 		t.Errorf("validate(%s) yields %s", i, s)
@@ -19,7 +19,7 @@ func TestValidate_0(t *testing.T) {
 
 func TestValidate_1(t *testing.T) {
 	// test a valid id
-	i := "now_Is_The_Time"
+	i := "now-Is-The-Time"
 	s := validate(i, false)
 	if strings.ToLower(i) != s {
 		t.Errorf("validate(%s) yields %s", i, s)
@@ -28,7 +28,7 @@ func TestValidate_1(t *testing.T) {
 
 func TestValidate_2(t *testing.T) {
 	// test an invalid id
-	i := "now_Is_The_$_Time"
+	i := "now-Is-The-$-Time"
 
 	defer func() {
 		if r := recover(); r != nil {
