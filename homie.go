@@ -1,7 +1,6 @@
 package homie
 
 import (
-	"container/list"
 	"github.com/eclipse/paho.mqtt.golang"
 	"time"
 )
@@ -82,7 +81,6 @@ type Device struct {
 	broadcastHandler func(d *Device, level, value string)
 	loop             func(d *Device)
 	client           mqtt.Client
-	tokens           *list.List
 
 	// Stuff for the stats extension.  At the moment all we do is publish uptime.
 	statsInterval time.Duration // how often to publish stats
@@ -99,6 +97,9 @@ type Device struct {
 
 	// This channel reflects connection status changes back to the run() method from the event handler.
 	connectChannel chan bool
+
+	// This channel is used to process publish tokens at the right time and place, asynchronously
+	tokenChannel chan *mqtt.Token
 }
 
 var (

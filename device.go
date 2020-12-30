@@ -1,7 +1,7 @@
 package homie
 
 import (
-	"container/list"
+	"context"
 	"github.com/eclipse/paho.mqtt.golang"
 	"strconv"
 	"time"
@@ -17,6 +17,7 @@ func NewDevice(id, name string) *Device {
 	}
 
 	device.id = id
+	device.configDone = false
 	device.protocol = "4.0.0"
 	device.name = name
 	device.state = "init"
@@ -29,12 +30,11 @@ func NewDevice(id, name string) *Device {
 	device.fwVersion = "unknown"
 	device.topicBase = defaultTopicBase
 
-	device.configDone = false
+	device.period = time.Second / time.Duration(4)
 
 	device.publishChannel = make(chan PropertyMessage, 100)
 	device.connectChannel = make(chan bool, 16)
-	device.period = time.Second / time.Duration(4)
-	device.tokens = list.New()
+	device.tokenChannel = make(chan *mqtt.Token, 256)
 
 	devices[id] = &device
 
@@ -67,7 +67,7 @@ func (d *Device) topic(t string) string {
 
 func (d *Device) publish(t, p string) {
 	token := d.client.Publish(d.topic(t), 1, true, p)
-	d.tokens.PushBack(&token)
+	d.tokenChannel <- &token
 }
 
 func durationToSeconds(d time.Duration) string {
@@ -113,12 +113,15 @@ func (d *Device) processConnect() {
 	}
 
 	// wait for all publications
-	for d.tokens.Len() > 0 {
-		le := d.tokens.Front()
-		t := le.Value.(*mqtt.Token)
-		(*t).Wait()
-		d.tokenFinalize(t)
-		d.tokens.Remove(le)
+tokenLoop:
+	for {
+		select {
+		case t := <-d.tokenChannel:
+			(*t).Wait()
+			d.tokenFinalize(t)
+		default:
+			break tokenLoop
+		}
 	}
 	d.connected = true
 	d.publish("$state", "ready")
@@ -136,6 +139,10 @@ func (d *Device) setLoopPeriod(period time.Duration) {
 // All error conditions return by panic.
 // No normaal return
 func (d *Device) Run() {
+	d.RunWithContext(context.Background())
+}
+
+func (d *Device) RunWithContext(runContext context.Context) {
 	var (
 		ticker *time.Ticker
 	)
@@ -146,6 +153,7 @@ func (d *Device) Run() {
 		ticker = time.NewTicker(d.period)
 	}
 
+runLoop:
 	for {
 		// Call the user's loop function
 		if d.loop != nil {
@@ -156,32 +164,49 @@ func (d *Device) Run() {
 	drain:
 		for {
 			// Process any accumulated publish tokens
-			for d.tokens.Len() > 0 {
-				le := d.tokens.Front()
-				t := le.Value.(*mqtt.Token)
-				if (*t).WaitTimeout(time.Duration(0)) {
-					d.tokenFinalize(t)
-					d.tokens.Remove(le)
-				} else {
-					break
+			// Do this without blocking.
+			// If we are not connected, let the connecting goroutine
+			// handle this.  Avoids simultaneous calls to d.tokenFinalize()
+			if d.connected {
+			tokenLoop:
+				for {
+					select {
+					case t := <-d.tokenChannel:
+						if (*t).WaitTimeout(time.Duration(0)) {
+							d.tokenFinalize(t)
+						} else {
+							d.tokenChannel <- t
+							break tokenLoop
+						}
+					default:
+						break tokenLoop
+					}
 				}
 			}
-
-			// non-blocking look for an incoming publish message
+			// non blocking
 			select {
 			case message := <-d.publishChannel:
+				// Message to publish?
 				message.publish()
+
 			case connected := <-d.connectChannel:
+				// Change in connection status?
 				if connected {
 					go d.processConnect()
 				}
+
 			default:
+				// If nothing to do, don't block
 				break drain
 			}
 		}
 
 		// now sleep for awhile if necessary
+		// Keep checking for work while sleeping.
+		// Note that there doesn't seem to be a good way of
+		// processing publish tokens here.
 		if d.period > 0 {
+		sleepLoop:
 			for {
 				select {
 				case message := <-d.publishChannel:
@@ -191,9 +216,14 @@ func (d *Device) Run() {
 						go d.processConnect()
 					}
 				case _ = <-ticker.C:
-					break
+					break sleepLoop
+				case <-runContext.Done():
+					break sleepLoop
 				}
 			}
+		}
+		if runContext.Err() != nil {
+			break runLoop
 		}
 	}
 }

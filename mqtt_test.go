@@ -14,18 +14,10 @@ import (
 
 var (
 	allTopics      map[string]string
+	testTopicBase  string
 	testClient     mqtt.Client
 	timeoutChannel chan int = make(chan int)
 )
-
-func cleanMqtt(t *testing.T, topicBase string) {
-	getMqttStuff(t, topicBase)
-}
-
-func getAllMqtt(t *testing.T, topicBase string) map[string]string {
-	getMqttStuff(t, topicBase)
-	return allTopics
-}
 
 var f1 mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 	topic := msg.Topic()
@@ -60,10 +52,11 @@ func getTestClient(t *testing.T) {
 }
 
 // get all the persistent messages and build a map of everything we know about everybody
-func getMqttStuff(t *testing.T, topicBase string) {
+func getMqttStuff(t *testing.T) {
 	c := testClient
+	allTopics = make(map[string]string)
 
-	subscription := topicBase + "/#"
+	subscription := testTopicBase + "/#"
 
 	if token := c.Subscribe(subscription, 0, nil); token.Wait() && token.Error() != nil {
 		t.Errorf("MQTT Subscribe failed: %v", token.Error())
@@ -86,5 +79,43 @@ waitLoop:
 
 	if token := c.Unsubscribe(subscription); token.Wait() && token.Error() != nil {
 		t.Errorf("MQTT Unsubscribe failed: %v", token.Error())
+	}
+}
+
+func cleanMqtt(t *testing.T) {
+	getMqttStuff(t)
+
+	for topic, _ := range allTopics {
+		token := testClient.Publish(topic, 1, true, "")
+		if token.Wait() && token.Error() != nil {
+			t.Errorf("cleaning topic %s yields publication error %v", topic, token.Error())
+		}
+	}
+}
+
+func getAllMqtt(t *testing.T) map[string]string {
+	getMqttStuff(t)
+	return allTopics
+}
+
+func verifyMqtt(t *testing.T, messages map[string]string) {
+	getMqttStuff(t)
+
+	// Look for the messages we expect
+	for k, v := range messages {
+		if v2, ok := allTopics[k]; ok {
+			if v != v2 {
+				t.Errorf("For topic %s expected value %s found value %s", k, v, v2)
+			}
+		} else {
+			t.Errorf("Did not find topic %s", k)
+		}
+	}
+
+	// Look for messages we did not expect
+	for k, v := range allTopics {
+		if _, ok := messages[k]; !ok {
+			t.Errorf("Did not expect %s: %s", k, v)
+		}
 	}
 }
