@@ -5,6 +5,7 @@ package homie
 //
 
 import (
+	"fmt"
 	"github.com/eclipse/paho.mqtt.golang"
 	"log"
 	"time"
@@ -53,7 +54,14 @@ func (d *Device) mqttSetup() {
 	d.client = mqtt.NewClient(options)
 	clientToDevice[d.client] = d
 	token := d.client.Connect()
-	d.tokenChannel <- &token
+
+	// I don't know if token.Wait() will block, so ...
+	go func(t mqtt.Token) {
+		t.Wait()
+		if t.Error() != nil {
+			panic(fmt.Sprintf("Mqtt connect fails with error %v", t.Error()))
+		}
+	}(token)
 }
 
 // Check for publish errors. If found, log them.
