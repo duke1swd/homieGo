@@ -50,6 +50,7 @@ func (d *Device) mqttSetup() {
 	options.SetOnConnectHandler(connectionFound)
 	options.SetOrderMatters(false)
 	options.SetWill(d.topic("$state"), "lost", 1, true)
+	d.clientOptions = options
 
 	d.client = mqtt.NewClient(options)
 	clientToDevice[d.client] = d

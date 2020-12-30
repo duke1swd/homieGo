@@ -80,6 +80,7 @@ type Device struct {
 	globalHandler    func(d *Device, n *Node, p *Property, value string)
 	broadcastHandler func(d *Device, level, value string)
 	loop             func(d *Device)
+	clientOptions    *mqtt.ClientOptions
 	client           mqtt.Client
 
 	// Stuff for the stats extension.  At the moment all we do is publish uptime.

@@ -2,8 +2,10 @@ package homie
 
 import (
 	"context"
+	"fmt"
 	"github.com/eclipse/paho.mqtt.golang"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +38,8 @@ func NewDevice(id, name string) *Device {
 	device.publishChannel = make(chan PropertyMessage, 100)
 	device.connectChannel = make(chan bool, 16)
 	device.tokenChannel = make(chan *mqtt.Token, 256)
+	device.globalHandler = nil
+	device.broadcastHandler = nil
 
 	devices[id] = &device
 
@@ -48,6 +52,9 @@ func (d *Device) SetGlobalHandler(handler func(d *Device, n *Node, p *Property, 
 
 func (d *Device) SetBroadcastHandler(handler func(d *Device, level, value string)) {
 	d.broadcastHandler = handler
+	if d.connected {
+		d.subscribeToBroadcasts()
+	}
 }
 
 func (d *Device) SetLoop(handler func(d *Device)) {
@@ -76,6 +83,20 @@ func durationToSeconds(d time.Duration) string {
 	return strconv.FormatInt(n, 10)
 }
 
+// wait for all publications
+func (d *Device) waitAllPublications() {
+tokenLoop:
+	for {
+		select {
+		case t := <-d.tokenChannel:
+			(*t).Wait()
+			d.tokenFinalize(t)
+		default:
+			break tokenLoop
+		}
+	}
+}
+
 // Publish everything about this device.
 // This is done on connection to (and reconnection to) the mqtt broker
 func (d *Device) processConnect() {
@@ -93,6 +114,10 @@ func (d *Device) processConnect() {
 	d.publish("$mac", d.mac)
 	d.publish("$fw/name", d.fwName)
 	d.publish("$fw/version", d.fwVersion)
+
+	if d.broadcastHandler != nil {
+		d.subscribeToBroadcasts()
+	}
 
 	// Spit out the nodes
 	if len(d.nodes) > 0 {
@@ -113,17 +138,7 @@ func (d *Device) processConnect() {
 		d.publish("$nodes", "")
 	}
 
-	// wait for all publications
-tokenLoop:
-	for {
-		select {
-		case t := <-d.tokenChannel:
-			(*t).Wait()
-			d.tokenFinalize(t)
-		default:
-			break tokenLoop
-		}
-	}
+	d.waitAllPublications()
 	d.connected = true
 	d.publish("$state", "ready")
 }
@@ -134,6 +149,26 @@ func (d *Device) setLoopPeriod(period time.Duration) {
 	}
 
 	d.period = period
+}
+
+// subscribe to the broadcast channel.
+// Blocks until broker acknowledges the subscription.
+func (d *Device) subscribeToBroadcasts() {
+	broadcastBase := d.topicBase + "/$broadcast/#"
+	token := d.client.Subscribe(broadcastBase, 0,
+		func(c mqtt.Client, m mqtt.Message) {
+			if d.broadcastHandler != nil {
+				topics := strings.SplitN(string(m.Topic()), "/", 3)
+				if len(topics) == 3 {
+					level := topics[2]
+					d.broadcastHandler(d, level, string(m.Payload()))
+				}
+			}
+		})
+	token.Wait()
+	if token.Error() != nil {
+		panic(fmt.Sprintf("Error while subscribing to %s: %v", broadcastBase, token.Error()))
+	}
 }
 
 // Run the control loop
@@ -228,4 +263,10 @@ runLoop:
 			break runLoop
 		}
 	}
+
+	// Come here to disconnect and exit
+	d.publish("$state", "disconnected")
+	d.waitAllPublications()
+	d.clientOptions.UnsetWill()
+	d.client.Disconnect(150) // disconnect in 0.15 seconds.
 }

@@ -4,6 +4,7 @@ package homie
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,32 +13,37 @@ import (
 
 var (
 	deviceMessages = map[string]string{
-		"testing/test-device-0000/$state":          "ready",
-		"testing/test-device-0000/$homie":          "4.0.0",
-		"testing/test-device-0000/$name":           "Test Device 0",
-		"testing/test-device-0000/$implementation": "homieGo 0.1.0",
-		"testing/test-device-0000/$stats/uptime":   "*",
-		"testing/test-device-0000/$fw/name":        "unknown",
-		"testing/test-device-0000/$extensions":     "org.homie.legacy-stats:0.1.1:[4.x],org.homie.legacy-firmware:0.1.1:[4.x]",
-		"testing/test-device-0000/$stats/interval": "60",
-		"testing/test-device-0000/$fw/version":     "unknown",
+		"testing/test-device-%04d/$state":          "disconnected",
+		"testing/test-device-%04d/$homie":          "4.0.0",
+		"testing/test-device-%04d/$name":           "Test Device 0",
+		"testing/test-device-%04d/$implementation": "homieGo 0.1.0",
+		"testing/test-device-%04d/$stats/uptime":   "*",
+		"testing/test-device-%04d/$fw/name":        "unknown",
+		"testing/test-device-%04d/$extensions":     "org.homie.legacy-stats:0.1.1:[4.x],org.homie.legacy-firmware:0.1.1:[4.x]",
+		"testing/test-device-%04d/$stats/interval": "60",
+		"testing/test-device-%04d/$fw/version":     "unknown",
 	}
 
 	nodeMessages = map[string]string{
-		"testing/test-device-0000/a-node/$type":       "test",
-		"testing/test-device-0000/another-node/$name": "Name another-node",
-		"testing/test-device-0000/another-node/$type": "test",
-		"testing/test-device-0000/$nodes":             "a-node,another-node",
-		"testing/test-device-0000/a-node/$name":       "Name a-node",
+		"testing/test-device-%04d/a-node/$type":       "test",
+		"testing/test-device-%04d/another-node/$name": "Name another-node",
+		"testing/test-device-%04d/another-node/$type": "test",
+		"testing/test-device-%04d/$nodes":             "a-node,another-node",
+		"testing/test-device-%04d/a-node/$name":       "Name a-node",
 	}
+
+	testTopicBase string
+	deviceCounter int
 )
 
 func init() {
 	testTopicBase = "testing"
+	deviceCounter = 0
 }
 
 func createTestDevice() *Device {
-	d := NewDevice("test-device-0000", "Test Device 0")
+	deviceCounter += 1
+	d := NewDevice(fmt.Sprintf("test-device-%04d", deviceCounter), "Test Device 0")
 	d.SetTopicBase(testTopicBase)
 	return d
 }
@@ -47,6 +53,15 @@ func myTestHandler(d *Device, n *Node, p *Property, a string) {
 
 func createTestNode(d *Device, id string) {
 	d.NewNode(id, "Name "+id, "test", myTestHandler)
+}
+
+func dmSub(iMes map[string]string, c int) map[string]string {
+	r := make(map[string]string)
+
+	for k, v := range iMes {
+		r[fmt.Sprintf(k, c)] = v
+	}
+	return r
 }
 
 func TestPublication(t *testing.T) {
@@ -61,7 +76,7 @@ func TestPublication(t *testing.T) {
 	d.RunWithContext(c)
 	cfl()
 
-	stuff := verifyMqtt(t, deviceMessages, nodeMessages)
+	stuff := verifyMqtt(t, dmSub(deviceMessages, deviceCounter), dmSub(nodeMessages, deviceCounter))
 
 	// check up time
 	for topic, payload := range stuff {

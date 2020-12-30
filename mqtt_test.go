@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	allTopics      map[string]string
-	testTopicBase  string
-	testClient     mqtt.Client
-	timeoutChannel chan int = make(chan int)
+	allTopics         map[string]string
+	testClient        mqtt.Client
+	timeoutChannel    chan int = make(chan int)
+	clientInitialized bool     = false
 )
 
 var f1 mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
@@ -39,6 +39,9 @@ var f1 mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 }
 
 func getTestClient(t *testing.T) {
+	if clientInitialized {
+		return
+	}
 	opts := mqtt.NewClientOptions().AddBroker("tcp://127.0.0.1:1883").SetClientID("fw-test")
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetDefaultPublishHandler(f1)
@@ -49,6 +52,7 @@ func getTestClient(t *testing.T) {
 		t.Errorf("MQTT Connect`failed: %v", token.Error())
 	}
 	testClient = c
+	clientInitialized = true
 }
 
 // get all the persistent messages and build a map of everything we know about everybody
@@ -106,7 +110,7 @@ func verifyMqtt(t *testing.T, messageMaps ...map[string]string) map[string]strin
 		for k, v := range messages {
 			if v2, ok := allTopics[k]; ok {
 				if v != "*" && v != v2 {
-					t.Errorf("For topic %s expected value %s found value %s", k, v, v2)
+					t.Errorf("For topic %s expected value \"%s\" found value \"%s\"", k, v, v2)
 				}
 			} else {
 				t.Errorf("Did not find topic %s", k)
