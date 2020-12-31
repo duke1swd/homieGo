@@ -38,6 +38,7 @@ func NewDevice(id, name string) *Device {
 	device.publishChannel = make(chan PropertyMessage, 100)
 	device.connectChannel = make(chan bool, 16)
 	device.tokenChannel = make(chan *mqtt.Token, 256)
+	device.unsubscribes = make([]func(), 10)
 	device.globalHandler = nil
 	device.broadcastHandler = nil
 
@@ -102,6 +103,7 @@ tokenLoop:
 
 // Publish everything about this device.
 // This is done on connection to (and reconnection to) the mqtt broker
+// TODO: Don't let more than one of these routines run in parallel.
 func (d *Device) processConnect() {
 	// Emit the required properties.
 	d.publish("$state", "init")
@@ -145,6 +147,12 @@ func (d *Device) processConnect() {
 	d.waitAllPublications()
 	d.connected = true
 	d.publish("$state", "ready")
+
+	// now, remove the temp subscriptions
+	for _, f := range d.unsubscribes {
+		f()
+	}
+	d.unsubscribes = make([]func(), 10)
 }
 
 func (d *Device) setLoopPeriod(period time.Duration) {

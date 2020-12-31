@@ -83,6 +83,8 @@ type Device struct {
 	clientOptions    *mqtt.ClientOptions
 	client           mqtt.Client
 
+	unsubscribes []func()
+
 	// Stuff for the stats extension.  At the moment all we do is publish uptime.
 	statsInterval time.Duration // how often to publish stats
 	statsBootTime time.Time     // used to compute uptime

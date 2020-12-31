@@ -102,6 +102,19 @@ func (p *Property) processConnect() {
 	// Is this property settable?  If so, subscribe to the set message.
 	d := n.device
 	d.client.Subscribe(p.topic("set"), 1, func(c mqtt.Client, msg mqtt.Message) { p.setEvent(string(msg.Payload())) })
+	// Also subscribe to the value itself, to get the initial value
+	valueTopic := p.node.topic(p.id)
+	d.client.Subscribe(valueTopic, 1, func(c mqtt.Client, msg mqtt.Message) {
+		if !p.node.device.configDone {
+			p.setEvent(string(msg.Payload()))
+		}
+	})
+
+	// When we are done configuring, this fn will be called to unsubscribe the base value subscription
+	d.unsubscribes = append(d.unsubscribes, func() {
+		t := d.client.Unsubscribe(valueTopic)
+		d.tokenChannel <- &t
+	})
 }
 
 // When a "set" message is received, this thread executes in some random go routine context.
