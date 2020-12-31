@@ -11,29 +11,6 @@ import (
 	"time"
 )
 
-var clientToDevice map[mqtt.Client]*Device
-
-func init() {
-	clientToDevice = make(map[mqtt.Client]*Device)
-}
-
-func connectionLostHandler(client mqtt.Client, e error) {
-	d, ok := clientToDevice[client]
-	if !ok {
-		panic("Connection Lost Handler cannot find device in map")
-	}
-	d.connected = false
-	d.connectChannel <- false
-}
-
-func connectionFound(client mqtt.Client) {
-	d, ok := clientToDevice[client]
-	if !ok {
-		panic("Connection Found Handler cannot find device in map")
-	}
-	d.connectChannel <- true
-}
-
 func (d *Device) mqttSetup() {
 	if d.connected {
 		panic("called setup on a connected device")
@@ -49,14 +26,16 @@ func (d *Device) mqttSetup() {
 	d.clientOptions.SetAutoReconnect(true)
 	d.clientOptions.SetConnectRetry(true)
 	d.clientOptions.SetConnectRetryInterval(time.Minute)
-	d.clientOptions.SetConnectionLostHandler(connectionLostHandler)
-	d.clientOptions.SetOnConnectHandler(connectionFound)
+	d.clientOptions.SetConnectionLostHandler(func(c mqtt.Client, e error) {
+		d.connected = false
+		d.connectChannel <- false
+	})
+	d.clientOptions.SetOnConnectHandler(func(c mqtt.Client) { d.connectChannel <- true })
 	d.clientOptions.SetOrderMatters(false)
 	d.clientOptions.SetWill(d.topic("$state"), "lost", 1, true)
 
 	if d.client == nil {
 		d.client = mqtt.NewClient(d.clientOptions)
-		clientToDevice[d.client] = d
 	}
 
 	token := d.client.Connect()
