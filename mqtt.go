@@ -39,23 +39,27 @@ func (d *Device) mqttSetup() {
 		panic("called setup on a connected device")
 	}
 
-	options := mqtt.NewClientOptions()
-	options.SetCleanSession(false)
-	options.AddBroker("tcp://192.168.1.13:1883")
-	options.SetClientID(mqttClientIDPrefix + "-" + d.id)
-	options.SetAutoReconnect(true)
-	options.SetConnectRetry(true)
-	options.SetConnectRetryInterval(time.Minute)
-	options.SetConnectionLostHandler(connectionLostHandler)
-	options.SetOnConnectHandler(connectionFound)
-	options.SetOrderMatters(false)
-	options.SetWill(d.topic("$state"), "lost", 1, true)
-	d.clientOptions = options
+	// re-use the existing clientOptions and client if we are reinitializing an existing device
+	if d.clientOptions == nil {
+		d.clientOptions = mqtt.NewClientOptions()
+	}
+	d.clientOptions.SetCleanSession(false)
+	d.clientOptions.AddBroker("tcp://192.168.1.13:1883")
+	d.clientOptions.SetClientID(mqttClientIDPrefix + "-" + d.id)
+	d.clientOptions.SetAutoReconnect(true)
+	d.clientOptions.SetConnectRetry(true)
+	d.clientOptions.SetConnectRetryInterval(time.Minute)
+	d.clientOptions.SetConnectionLostHandler(connectionLostHandler)
+	d.clientOptions.SetOnConnectHandler(connectionFound)
+	d.clientOptions.SetOrderMatters(false)
+	d.clientOptions.SetWill(d.topic("$state"), "lost", 1, true)
 
-	d.client = mqtt.NewClient(options)
-	clientToDevice[d.client] = d
+	if d.client == nil {
+		d.client = mqtt.NewClient(d.clientOptions)
+		clientToDevice[d.client] = d
+	}
+
 	token := d.client.Connect()
-
 	// I don't know if token.Wait() will block, so ...
 	go func(t mqtt.Token) {
 		t.Wait()

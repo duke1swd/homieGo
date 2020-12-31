@@ -1,18 +1,24 @@
 package homie
 
-import ()
+import (
+	"github.com/eclipse/paho.mqtt.golang"
+)
 
 // Property methods
+// All of the public methods can be called from an event handler.
+// Actual publication is deferred out of the event handler.
+// Publication happens in Device.Run().
 
-func (p Property) Settable(handler func(d *Device, n *Node, p *Property, value string)) {
+func (p Property) Settable(handler func(d *Device, n *Node, p *Property, value string) bool) {
 	p.settable = true
 	p.handler = handler
 }
 
-func validateUnit(p Property, unit string) {
+func (p *Property) validateUnit(unit string) string {
 	if _, ok := propertyUnits[unit]; !ok {
 		panic("invalid unit " + unit + "for property " + p.id + " in node " + p.node.id)
 	}
+	return unit
 }
 
 func (p *Property) SetUnit(unit string) {
@@ -21,11 +27,11 @@ func (p *Property) SetUnit(unit string) {
 			" after calling device.Run()")
 	}
 
-	validateUnit(*p, unit)
-	p.unit = unit
+	p.unit = p.validateUnit(unit)
 }
 
-func validateFormat(p Property, format string) {
+func (p *Property) validateFormat(format string) string {
+	return format
 }
 
 func (p *Property) SetFormat(format string) {
@@ -34,8 +40,7 @@ func (p *Property) SetFormat(format string) {
 			" after calling device.Run()")
 	}
 
-	validateFormat(*p, format)
-	p.format = format
+	p.format = p.validateFormat(format)
 }
 
 func (p *Property) SetProperty() PropertyMessage {
@@ -48,12 +53,18 @@ func (p *Property) SetProperty() PropertyMessage {
 	return m
 }
 
+func (p *Property) topic(t string) string {
+	return p.node.topic(p.id + "/" + t)
+}
+
 func (p *Property) publish(topic, payload string) {
 	p.node.publish(p.id+"/"+topic, payload)
 }
 
 func (p *Property) processConnect() {
 	var t string
+
+	n := p.node
 
 	p.publish("$name", p.name)
 
@@ -86,23 +97,51 @@ func (p *Property) processConnect() {
 	}
 
 	// Finally spit out the value of this property.
-	p.node.publish(p.id, p.value)
+	n.publish(p.id, p.value)
+
+	// Is this property settable?  If so, subscribe to the set message.
+	d := n.device
+	d.client.Subscribe(p.topic("set"), 1, func(c mqtt.Client, msg mqtt.Message) { p.setEvent(string(msg.Payload())) })
 }
 
-func validateValue(p *Property, value string) error {
+// When a "set" message is received, this thread executes in some random go routine context.
+func (p *Property) setEvent(value string) {
+	n := p.node
+	d := n.device
+
+	if d.globalHandler != nil && d.globalHandler(d, n, p, value) {
+		return
+	}
+
+	if n.handler != nil && n.handler(d, n, p, value) {
+		return
+	}
+
+	if p.handler != nil {
+		p.handler(d, n, p, value)
+	}
+}
+
+func (m PropertyMessage) validateValue(value string) error {
 	// TODO add checking
 	return nil
 }
 
 // Returns an error if the property's value is wrong format, unit, or whatever.
+// These errors are warnings only.
 func (m PropertyMessage) Send(value string) error {
 	m.property.value = value
-	err := validateValue(m.property, value)
+	err := m.validateValue(value)
 	if m.property.node.device.configDone {
 		m.property.node.device.publishChannel <- m
 	}
 	return err
 }
 
+// Called by Device.Run() to do the actual publication of a new property value.
 func (m PropertyMessage) publish() {
+	n := m.property.node
+	d := n.device
+	token := d.client.Publish(n.topic(m.property.id), m.Qos, m.Retained, m.property.value)
+	d.tokenChannel <- &token
 }

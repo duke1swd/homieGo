@@ -44,7 +44,7 @@ type Property struct {
 	node     *Node
 	settable bool // hardwired attribute
 	dataType int  // must be one of the defined data types
-	handler  func(d *Device, n *Node, p *Property, a string)
+	handler  func(d *Device, n *Node, p *Property, value string) bool
 	format   string
 	unit     string
 	value    string
@@ -52,7 +52,7 @@ type Property struct {
 
 type PropertyMessage struct {
 	property *Property
-	Qos      int  // default value is 1
+	Qos      byte // default value is 1
 	Retained bool // default value is true
 }
 
@@ -61,7 +61,7 @@ type Node struct {
 	device     *Device
 	name       string
 	nType      string
-	handler    func(d *Device, n *Node, p *Property, a string)
+	handler    func(d *Device, n *Node, p *Property, value string) bool
 	properties map[string]*Property
 }
 
@@ -77,7 +77,7 @@ type Device struct {
 	connected        bool
 	topicBase        string // default is "homie"
 	period           time.Duration
-	globalHandler    func(d *Device, n *Node, p *Property, value string)
+	globalHandler    func(d *Device, n *Node, p *Property, value string) bool
 	broadcastHandler func(d *Device, level, value string)
 	loop             func(d *Device)
 	clientOptions    *mqtt.ClientOptions

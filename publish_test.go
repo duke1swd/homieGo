@@ -48,7 +48,8 @@ func createTestDevice() *Device {
 	return d
 }
 
-func myTestHandler(d *Device, n *Node, p *Property, a string) {
+func myTestHandler(d *Device, n *Node, p *Property, a string) bool {
+	return true
 }
 
 func createTestNode(d *Device, id string) {

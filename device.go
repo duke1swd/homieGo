@@ -41,12 +41,15 @@ func NewDevice(id, name string) *Device {
 	device.globalHandler = nil
 	device.broadcastHandler = nil
 
+	device.clientOptions = nil
+	device.client = nil
+
 	devices[id] = &device
 
 	return &device
 }
 
-func (d *Device) SetGlobalHandler(handler func(d *Device, n *Node, p *Property, value string)) {
+func (d *Device) SetGlobalHandler(handler func(d *Device, n *Node, p *Property, value string) bool) {
 	d.globalHandler = handler
 }
 
@@ -102,6 +105,7 @@ tokenLoop:
 func (d *Device) processConnect() {
 	// Emit the required properties.
 	d.publish("$state", "init")
+	d.waitAllPublications() // force the "init" message out before any others.
 	d.publish("$homie", d.protocol)
 	d.publish("$name", d.name)
 	d.publish("$extensions", d.extensions)
@@ -269,4 +273,5 @@ runLoop:
 	d.waitAllPublications()
 	d.clientOptions.UnsetWill()
 	d.client.Disconnect(150) // disconnect in 0.15 seconds.
+	d.configDone = false
 }

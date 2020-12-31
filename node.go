@@ -3,7 +3,7 @@ package homie
 // Node methods
 
 // Create and return a node
-func (device *Device) NewNode(id, name, nType string, handler func(d *Device, n *Node, p *Property, a string)) *Node {
+func (device *Device) NewNode(id, name, nType string, handler func(d *Device, n *Node, p *Property, a string) bool) *Node {
 	var node Node
 
 	id = validate(id, false)
@@ -79,6 +79,10 @@ func (n Node) Name() string {
 
 func (n Node) NodeType() string {
 	return n.nType
+}
+
+func (n *Node) topic(t string) string {
+	return n.device.topic(n.id + "/" + t)
 }
 
 func (n *Node) publish(topic, payload string) {
