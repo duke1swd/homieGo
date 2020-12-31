@@ -1,0 +1,55 @@
+package homie
+
+// test the publication of things.
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+)
+
+func TestBroadcast(t *testing.T) {
+	broadcastLevel := ""
+	broadcastValue := ""
+	myLevel := "alarming!"
+	myLevelValue := "now!"
+
+	getTestClient(t)
+	cleanMqtt(t)
+	d := createTestDevice()
+	createTestNode(d, "a-node")
+	d.SetBroadcastHandler(func(d *Device, level, value string) {
+		broadcastLevel = level
+		broadcastValue = value
+	})
+
+	// Run for until cancelled
+	var wg sync.WaitGroup
+	wg.Add(1)
+	c, cfl := context.WithCancel(context.Background())
+	go func() {
+		d.RunWithContext(c)
+		wg.Done()
+	}()
+	time.Sleep(time.Duration(25) * time.Millisecond)
+
+	// send a broadcast
+	token := d.client.Publish(testTopicBase+"/$broadcast/"+myLevel, 1, true, myLevelValue)
+	token.Wait()
+	if token.Error() != nil {
+		t.Errorf("broadcast failed with error: %v", token.Error())
+	}
+	time.Sleep(time.Duration(25) * time.Millisecond)
+	if broadcastLevel != myLevel {
+		t.Errorf("broadcast level mismatch.  Expected \"%s\" got \"%s\"", myLevel, broadcastLevel)
+	}
+	if broadcastValue != myLevelValue {
+		t.Errorf("broadcast value mismatch.  Expected \"%s\" got \"%s\"", myLevelValue, broadcastValue)
+	}
+
+	// terminate the run
+	cfl()
+	wg.Wait()
+	cleanMqtt(t)
+}
