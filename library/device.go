@@ -73,6 +73,10 @@ func (d *Device) SetTopicBase(b string) {
 	d.topicBase = validate(b, false)
 }
 
+func (d *Device) GetName() string {
+	return d.name
+}
+
 func (d *Device) topic(t string) string {
 	return d.topicBase + "/" + d.id + "/" + t
 }
