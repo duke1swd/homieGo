@@ -50,6 +50,15 @@ func NewDevice(id, name string) *Device {
 	return &device
 }
 
+// to destroy a running device first cancel its context, then wait on its wait channel,
+// then call here
+func (d *Device) Destroy() {
+	if d.configDone {
+		panic("Cannot destroy running device " + d.id)
+	}
+	delete(devices, d.id)
+}
+
 func (d *Device) SetGlobalHandler(handler func(d *Device, n *Node, p *Property, value string) bool) {
 	d.globalHandler = handler
 }

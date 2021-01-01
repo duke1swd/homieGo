@@ -18,33 +18,40 @@ import (
 var (
 	broadcastAddr   *net.UDPAddr
 	broadcastPeriod time.Duration
-	plugs           map[string]homie.Device = make(map[string]homie.Device)
+	topicBase       string
 	statusQueryB    []byte
 	setOnB          []byte
 	setOffB         []byte
+	packetConn      net.PacketConn
 )
 
 type kasaDevice struct {
-	uid      string
-	id       string // homie id
-	name     string // homie friendly name
-	addr     net.Addr
-	on       bool
-	hDevice  *homie.Device
-	lastSeen time.Time
+	uid  string
+	id   string // homie id
+	name string // homie friendly name
+	addr net.Addr
+	on   bool
+
+	lastSeen       time.Time
+	hDevice        *homie.Device
+	outletProperty *homie.Property
+	cancelFunction context.CancelFunc
+	waitChan       chan bool
 }
 
 const defaultNetwork = "192.168.1.0/24"
 const defaultBroadcastPeriod = "10" // in seconds
+const defaultTopicBase = ""
 const kasaPort = 9999
 const statusQuery = "{\"system\":{\"get_sysinfo\":null},\"emeter\":{\"get_realtime\":null}}"
 const setOn = "{\"system\":{\"set_relay_state\":{\"state\":1}}}"
 const setOff = "{\"system\":{\"set_relay_state\":{\"state\":0}}}"
 
 var (
-	debug   bool
-	debugV  bool
-	network string
+	debug             bool
+	debugV            bool
+	network           string
+	lostDeviceTimeout time.Duration
 )
 
 var (
@@ -56,6 +63,10 @@ func init() {
 	flag.BoolVar(&debugV, "D", false, "extreme debugging")
 
 	flag.Parse()
+
+	if debugV {
+		debug = true
+	}
 
 	kasaMap = make(map[string]*kasaDevice)
 
@@ -75,12 +86,23 @@ func init() {
 	}
 	broadcastPeriod = time.Duration(n) * time.Second
 
+	if t, ok := os.LookupEnv("HOMIETOPIC"); ok {
+		topicBase = defaultTopicBase
+	} else {
+		topicBase = t
+	}
+
 	statusQueryB = []byte(statusQuery)
 	tpEncode(statusQueryB)
 	setOnB = []byte(setOn)
 	tpEncode(setOnB)
 	setOffB = []byte(setOff)
 	tpEncode(setOffB)
+
+	lostDeviceTimeout = broadcastPeriod * time.Duration(5)
+	if debug {
+		lostDeviceTimeout = time.Second
+	}
 }
 
 func tpEncode(data []byte) {
@@ -116,24 +138,33 @@ func printData(data []byte) {
 }
 
 // Broadcast a packet.  Packet must already be encrypted
-func broadcast(pc net.PacketConn, data []byte) {
+func broadcast(data []byte) {
 
-	_, err := pc.WriteTo(data, broadcastAddr)
+	_, err := packetConn.WriteTo(data, broadcastAddr)
 	if err != nil {
 		log.Printf("Broadcast to %v failed with error %v", broadcastAddr, err)
 	}
 }
 
+// Send a packet via UDP.  Packet must already be encrypted
+func unicast(data []byte, kasa *kasaDevice) {
+
+	_, err := packetConn.WriteTo(data, kasa.addr)
+	if err != nil {
+		log.Printf("Unicast to %v failed with error %v", kasa.addr, err)
+	}
+}
+
 // Runs as an indepent routine.  Listens for responses to our broadcast
 // parses them, mostly, and sends them down the channel
-func listenerSysinfo(c context.Context, pc net.PacketConn, output chan map[string]interface{}) {
+func listenerSysinfo(c context.Context, output chan map[string]interface{}) {
 	var response interface{}
 
 	// if the context dies, kill any pending read
 	go func() {
 		for _ = range c.Done() {
 		}
-		pc.SetReadDeadline(time.Now())
+		packetConn.SetReadDeadline(time.Now())
 	}()
 
 	largeBuf := make([]byte, 1024)
@@ -143,7 +174,7 @@ func listenerSysinfo(c context.Context, pc net.PacketConn, output chan map[strin
 			return
 		}
 
-		n, addr, err := pc.ReadFrom(largeBuf)
+		n, addr, err := packetConn.ReadFrom(largeBuf)
 		if err != nil {
 			if c.Err() != nil {
 				// context timed out or was cancelled
@@ -233,6 +264,7 @@ func listenerSysinfo(c context.Context, pc net.PacketConn, output chan map[strin
 
 // converts a plug's nickname into a valid homie id and name.
 func homieName(alias string) (string, string) {
+	// TODO make this routine validate names and IDs
 	return alias, alias
 }
 
@@ -316,8 +348,64 @@ func tp2kasa(gmap map[string]interface{}) (*kasaDevice, bool) {
 	return &kasa, true
 }
 
+// This function processes a request to turn the outlet on or off
+var namesForOnOff map[string]bool = map[string]bool{
+	"on":    true,
+	"ON":    true,
+	"1":     true,
+	"true":  true,
+	"off":   false,
+	"OFF":   false,
+	"0":     false,
+	"false": false,
+}
+
+func (kasa *kasaDevice) setValue(value string) {
+	// If we don't understand the command, do nothing
+	newVal, ok := namesForOnOff[value]
+	if !ok {
+		log.Printf("Unknown command %s", value)
+		return
+	}
+
+	if kasa.on == newVal {
+		return
+	}
+
+	setRelayState(kasa, newVal)
+	unicast(statusQueryB, kasa) // ping the device.  the response to this will trigger the setting of the property
+}
+
+// This function creates the homie device, its node, and its properties
+func createHomieDevice(kasa *kasaDevice) {
+	var c context.Context
+
+	kasa.hDevice = homie.NewDevice(kasa.id, kasa.name)
+	if len(topicBase) > 0 {
+		kasa.hDevice.SetTopicBase(topicBase)
+	}
+	node := kasa.hDevice.NewNode("outlet", "outlet", "relay", nil)
+	property := node.Advertise("on", "on", homie.DtString)
+	property.Settable(func(d *homie.Device, n *homie.Node, p *homie.Property, value string) bool {
+		kasa.setValue(value)
+		return true
+	})
+	kasa.outletProperty = property
+	c, kasa.cancelFunction = context.WithCancel(context.Background())
+	kasa.waitChan = make(chan bool, 1)
+	go kasa.hDevice.RunWithContext(c, kasa.waitChan)
+}
+
+func destroyHomieDevice(kasa *kasaDevice) {
+	kasa.cancelFunction()
+	for _ = range kasa.waitChan {
+	}
+	kasa.hDevice.Destroy()
+}
+
 // Process events and do things
 func run(c context.Context, deviceChannel chan map[string]interface{}) {
+	ticker := time.NewTicker(lostDeviceTimeout / time.Duration(2))
 	for {
 		select {
 		case gmap := <-deviceChannel:
@@ -333,26 +421,36 @@ func run(c context.Context, deviceChannel chan map[string]interface{}) {
 			}
 
 			if oldK, ok := kasaMap[kasa.uid]; ok {
+
+				// If device address changes, record change.  No other work
+				oldK.addr = kasa.addr
+
 				// device already exists.
 				// uid already matches
 				if oldK.id != kasa.id || oldK.name != kasa.name {
 					// device has been programmed to a new identity
 					// destroy the old device and create the new one
-					// TODO
+					destroyHomieDevice(oldK)
+					createHomieDevice(kasa)
+					oldK = kasa
 				}
 
-				// If device address changes, record change.  No other work
-				oldK.addr = kasa.addr
-
 				// Process change of device state
-				// TODO
-				oldK.on = kasa.on
+				// record the new state and tell Homie about it.
+				if oldK.on != kasa.on {
+					oldK.on = kasa.on
+					s := "false"
+					if kasa.on {
+						s = "true"
+					}
+					oldK.outletProperty.SetProperty().Send(s)
+				}
 
 				// Mark alive
 				oldK.lastSeen = time.Now()
 			} else {
 				// New device.  Create it
-				// TODO
+				createHomieDevice(kasa)
 				kasa.lastSeen = time.Now()
 				kasaMap[kasa.uid] = kasa
 			}
@@ -360,9 +458,32 @@ func run(c context.Context, deviceChannel chan map[string]interface{}) {
 			//_, ok := callTCP(kasa, "{\"system\":{\"set_relay_state\":{\"state\":1}}}")
 			//fmt.Printf("call returns %v\n", ok)
 
+		case _ = <-ticker.C:
+			// Scan for any devices we have not seen in awhile.
+			for _, k := range kasaMap {
+				if time.Since(k.lastSeen) > lostDeviceTimeout {
+					destroyHomieDevice(k)
+				}
+			}
+
 		case <-c.Done():
 			return
 		}
+	}
+}
+
+// set the relay state to 0 (off) or 1 (on)
+func setRelayState(k *kasaDevice, state bool) {
+	var command []byte
+
+	if state {
+		command = setOnB
+	} else {
+		command = setOffB
+	}
+
+	if _, err := packetConn.WriteTo(command, k.addr); err != nil {
+		log.Printf("Send command to %s (%v) failed with error %v", k.name, k.addr, err)
 	}
 }
 
@@ -480,7 +601,7 @@ func setupBroadcastAddr(port int) {
 	broadcastAddr = &u
 }
 
-func broadcaster(c context.Context, pc net.PacketConn) {
+func broadcaster(c context.Context) {
 	ticker := time.NewTicker(broadcastPeriod)
 
 	for {
@@ -488,7 +609,7 @@ func broadcaster(c context.Context, pc net.PacketConn) {
 		case <-c.Done():
 			return
 		case _ = <-ticker.C:
-			broadcast(pc, statusQueryB)
+			broadcast(statusQueryB)
 		}
 	}
 }
@@ -497,21 +618,21 @@ func main() {
 	setupBroadcastAddr(kasaPort)
 
 	// Create a packet connection
-	pc, err := net.ListenPacket("udp", "") // listen for UDP on unspecified port
+	packetConn, err := net.ListenPacket("udp", "") // listen for UDP on unspecified port
 	if err != nil {
 		panic(err)
 	}
-	defer pc.Close()
+	defer packetConn.Close()
 
 	deviceChannel := make(chan map[string]interface{}, 100)
 
 	c, cfl := context.WithTimeout(context.Background(), time.Duration(10)*time.Second)
 	defer cfl()
 
-	go listenerSysinfo(c, pc, deviceChannel)
+	go listenerSysinfo(c, deviceChannel)
 
 	// Set up periodic broadcasts
-	go broadcaster(c, pc)
+	go broadcaster(c)
 
 	// Collect the resposes
 
