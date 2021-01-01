@@ -38,7 +38,7 @@ func NewDevice(id, name string) *Device {
 	device.publishChannel = make(chan PropertyMessage, 100)
 	device.connectChannel = make(chan bool, 16)
 	device.tokenChannel = make(chan *mqtt.Token, 256)
-	device.unsubscribes = make([]func(), 10)
+	device.unsubscribes = make([]func(), 0,10)
 	device.globalHandler = nil
 	device.broadcastHandler = nil
 
@@ -156,7 +156,7 @@ func (d *Device) processConnect() {
 	for _, f := range d.unsubscribes {
 		f()
 	}
-	d.unsubscribes = make([]func(), 10)
+	d.unsubscribes = make([]func(), 0, 10)
 }
 
 func (d *Device) setLoopPeriod(period time.Duration) {
@@ -191,10 +191,10 @@ func (d *Device) subscribeToBroadcasts() {
 // All error conditions return by panic.
 // No normaal return
 func (d *Device) Run() {
-	d.RunWithContext(context.Background())
+	d.RunWithContext(context.Background(), make(chan bool, 1))
 }
 
-func (d *Device) RunWithContext(runContext context.Context) {
+func (d *Device) RunWithContext(runContext context.Context, waitChannel chan bool) {
 	var (
 		ticker *time.Ticker
 	)
@@ -286,4 +286,6 @@ runLoop:
 	d.clientOptions.UnsetWill()
 	d.client.Disconnect(150) // disconnect in 0.15 seconds.
 	d.configDone = false
+	waitChannel <- true	// signal we are done!
+	close(waitChannel)
 }

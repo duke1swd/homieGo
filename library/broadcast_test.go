@@ -4,7 +4,6 @@ package homie
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 )
@@ -25,13 +24,9 @@ func TestBroadcast(t *testing.T) {
 	})
 
 	// Run for until cancelled
-	var wg sync.WaitGroup
-	wg.Add(1)
+	waitChannel := make(chan bool, 1)
 	c, cfl := context.WithCancel(context.Background())
-	go func() {
-		d.RunWithContext(c)
-		wg.Done()
-	}()
+	go d.RunWithContext(c, waitChannel)
 	time.Sleep(time.Duration(25) * time.Millisecond)
 
 	// send a broadcast
@@ -50,6 +45,9 @@ func TestBroadcast(t *testing.T) {
 
 	// terminate the run
 	cfl()
-	wg.Wait()
+	
+	// wait for Run to come back
+	for _ = range(waitChannel)  {
+	}
 	cleanMqtt(t)
 }

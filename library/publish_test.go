@@ -74,7 +74,7 @@ func TestPublication(t *testing.T) {
 
 	// Run for 1 second
 	c, cfl := context.WithTimeout(context.Background(), time.Second*time.Duration(1))
-	d.RunWithContext(c)
+	d.RunWithContext(c, make(chan bool, 1))
 	cfl()
 
 	stuff := verifyMqtt(t, dmSub(deviceMessages, deviceCounter), dmSub(nodeMessages, deviceCounter))
