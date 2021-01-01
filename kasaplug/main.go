@@ -11,15 +11,17 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"time"
 )
 
 var (
-	broadcastAddr *net.UDPAddr
-	plugs         map[string]homie.Device = make(map[string]homie.Device)
-	statusQueryB  []byte
-	setOnB []byte
-	setOffB []byte
+	broadcastAddr   *net.UDPAddr
+	broadcastPeriod time.Duration
+	plugs           map[string]homie.Device = make(map[string]homie.Device)
+	statusQueryB    []byte
+	setOnB          []byte
+	setOffB         []byte
 )
 
 type kasaDevice struct {
@@ -31,6 +33,7 @@ type kasaDevice struct {
 }
 
 const defaultNetwork = "192.168.1.0/24"
+const defaultBroadcastPeriod = "10" // in seconds
 const kasaPort = 9999
 const statusQuery = "{\"system\":{\"get_sysinfo\":null},\"emeter\":{\"get_realtime\":null}}"
 const setOn = "{\"system\":{\"set_relay_state\":{\"state\":1}}}"
@@ -59,6 +62,16 @@ func init() {
 	} else {
 		network = defaultNetwork
 	}
+
+	s := defaultBroadcastPeriod
+	if d, ok := os.LookupEnv("BROADCASTPERIOD"); ok {
+		s = d
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		n, _ = strconv.Atoi(defaultBroadcastPeriod)
+	}
+	broadcastPeriod = time.Duration(n) * time.Second
 
 	statusQueryB = []byte(statusQuery)
 	tpEncode(statusQueryB)
@@ -437,6 +450,19 @@ func setupBroadcastAddr(port int) {
 	broadcastAddr = &u
 }
 
+func broadcaster(c context.Context, pc net.PacketConn) {
+	ticker := time.NewTicker(broadcastPeriod)
+
+	for {
+		select {
+		case <-c.Done():
+			return
+		case _ = <-ticker.C:
+			broadcast(pc, statusQueryB)
+		}
+	}
+}
+
 func main() {
 	setupBroadcastAddr(kasaPort)
 
@@ -454,8 +480,8 @@ func main() {
 
 	go listenerSysinfo(c, pc, backChannel)
 
-	// Broadcast our query
-	broadcast(pc, statusQueryB)
+	// Set up periodic broadcasts
+	go broadcaster(c, pc)
 
 	// Collect the resposes
 
