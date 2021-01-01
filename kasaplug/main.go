@@ -25,11 +25,13 @@ var (
 )
 
 type kasaDevice struct {
-	uid     string
-	name    string
-	addr    net.Addr
-	on      bool
-	hDevice *homie.Device
+	uid      string
+	id       string // homie id
+	name     string // homie friendly name
+	addr     net.Addr
+	on       bool
+	hDevice  *homie.Device
+	lastSeen time.Time
 }
 
 const defaultNetwork = "192.168.1.0/24"
@@ -46,7 +48,7 @@ var (
 )
 
 var (
-	kasaMap map[string]kasaDevice
+	kasaMap map[string]*kasaDevice // only accessed in the context of the run() go routine.
 )
 
 func init() {
@@ -55,7 +57,7 @@ func init() {
 
 	flag.Parse()
 
-	kasaMap = make(map[string]kasaDevice)
+	kasaMap = make(map[string]*kasaDevice)
 
 	if n, ok := os.LookupEnv("NETWORK"); ok {
 		network = n
@@ -229,45 +231,45 @@ func listenerSysinfo(c context.Context, pc net.PacketConn, output chan map[strin
 	}
 }
 
-// converts a plug's nickname into a valid homie name.
-func homieName(alias string) string {
-	return alias
+// converts a plug's nickname into a valid homie id and name.
+func homieName(alias string) (string, string) {
+	return alias, alias
 }
 
 // Convert the json stuff that came back from the tp-link to our kasaDevice
-func tp2homie(gmap map[string]interface{}) (kasaDevice, bool) {
+func tp2kasa(gmap map[string]interface{}) (*kasaDevice, bool) {
 
-	var device kasaDevice
+	var kasa kasaDevice
 
 	a, ok := gmap["alias"]
 	if !ok {
 		if debug {
 			fmt.Printf("gmap has no alias\n")
 		}
-		return device, false
+		return nil, false
 	}
 	name, ok := a.(string)
 	if !ok {
 		if debug {
 			fmt.Printf("gmap alias is not a string (!)\n")
 		}
-		return device, false
+		return nil, false
 	}
-	device.name = homieName(name)
+	kasa.id, kasa.name = homieName(name)
 
 	ad, ok := gmap["addr"]
 	if !ok {
 		if debug {
 			fmt.Printf("gmap has no addr\n")
 		}
-		return device, false
+		return nil, false
 	}
-	device.addr, ok = ad.(net.Addr)
+	kasa.addr, ok = ad.(net.Addr)
 	if !ok {
 		if debug {
 			fmt.Printf("gmap addr is not of type net.Addr\n")
 		}
-		return device, false
+		return nil, false
 	}
 
 	d, ok := gmap["deviceId"]
@@ -275,14 +277,14 @@ func tp2homie(gmap map[string]interface{}) (kasaDevice, bool) {
 		if debug {
 			fmt.Printf("gmap has no deviceId\n")
 		}
-		return device, false
+		return nil, false
 	}
-	device.uid, ok = d.(string)
+	kasa.uid, ok = d.(string)
 	if !ok {
 		if debug {
 			fmt.Printf("gmap deviceId is not a string (!)\n")
 		}
-		return device, false
+		return nil, false
 	}
 
 	r, ok := gmap["relay_state"]
@@ -290,46 +292,73 @@ func tp2homie(gmap map[string]interface{}) (kasaDevice, bool) {
 		if debug {
 			fmt.Printf("gmap has no relay_state\n")
 		}
-		return device, false
+		return nil, false
 	}
 	relay, ok := r.(float64)
 	if !ok {
 		if debug {
 			fmt.Printf("gmap relay_state (%v) is not an float (!)\n", relay)
 		}
-		return device, false
+		return nil, false
 	}
 	switch int(relay) {
 	case 0:
-		device.on = false
+		kasa.on = false
 	case 1:
-		device.on = true
+		kasa.on = true
 	default:
 		if debug {
 			fmt.Printf("gmap relay_state(%f) is not 0 or 1\n", relay)
 		}
-		return device, false
+		return nil, false
 	}
 
-	return device, true
+	return &kasa, true
 }
 
 // Process events and do things
-func run(c context.Context, backChannel chan map[string]interface{}) {
+func run(c context.Context, deviceChannel chan map[string]interface{}) {
 	for {
 		select {
-		case gmap := <-backChannel:
-			device, ok := tp2homie(gmap)
-			if ok {
-				kasaMap[device.uid] = device
-				if debug {
-					fmt.Printf("Got device %s\n", device.name)
-					fmt.Printf("\tRelay is On: %v\n", device.on)
-					fmt.Printf("\tAddress: %s\n", device.addr.String())
-				}
-				//_, ok := callTCP(device, "{\"system\":{\"set_relay_state\":{\"state\":1}}}")
-				//fmt.Printf("call returns %v\n", ok)
+		case gmap := <-deviceChannel:
+			kasa, ok := tp2kasa(gmap)
+			if !ok {
+				break
 			}
+
+			if debug {
+				fmt.Printf("Got device %s\n", kasa.name)
+				fmt.Printf("\tRelay is On: %v\n", kasa.on)
+				fmt.Printf("\tAddress: %s\n", kasa.addr.String())
+			}
+
+			if oldK, ok := kasaMap[kasa.uid]; ok {
+				// device already exists.
+				// uid already matches
+				if oldK.id != kasa.id || oldK.name != kasa.name {
+					// device has been programmed to a new identity
+					// destroy the old device and create the new one
+					// TODO
+				}
+
+				// If device address changes, record change.  No other work
+				oldK.addr = kasa.addr
+
+				// Process change of device state
+				// TODO
+				oldK.on = kasa.on
+
+				// Mark alive
+				oldK.lastSeen = time.Now()
+			} else {
+				// New device.  Create it
+				// TODO
+				kasa.lastSeen = time.Now()
+				kasaMap[kasa.uid] = kasa
+			}
+
+			//_, ok := callTCP(kasa, "{\"system\":{\"set_relay_state\":{\"state\":1}}}")
+			//fmt.Printf("call returns %v\n", ok)
 
 		case <-c.Done():
 			return
@@ -338,6 +367,7 @@ func run(c context.Context, backChannel chan map[string]interface{}) {
 }
 
 // Call and response to the device over TCP
+// Function works, but is currently unused.
 func callTCP(device kasaDevice, call string) (interface{}, bool) {
 	var dialer net.Dialer
 	dialer.Timeout = time.Duration(2) * time.Second // the device responds quickly or not at all
@@ -473,17 +503,17 @@ func main() {
 	}
 	defer pc.Close()
 
-	backChannel := make(chan map[string]interface{}, 100)
+	deviceChannel := make(chan map[string]interface{}, 100)
 
 	c, cfl := context.WithTimeout(context.Background(), time.Duration(10)*time.Second)
 	defer cfl()
 
-	go listenerSysinfo(c, pc, backChannel)
+	go listenerSysinfo(c, pc, deviceChannel)
 
 	// Set up periodic broadcasts
 	go broadcaster(c, pc)
 
 	// Collect the resposes
 
-	run(c, backChannel)
+	run(c, deviceChannel)
 }
