@@ -45,9 +45,9 @@ func TestBroadcast(t *testing.T) {
 
 	// terminate the run
 	cfl()
-	
+
 	// wait for Run to come back
-	for _ = range(waitChannel)  {
+	for _ = range waitChannel {
 	}
 	cleanMqtt(t)
 }

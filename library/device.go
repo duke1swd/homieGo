@@ -38,7 +38,7 @@ func NewDevice(id, name string) *Device {
 	device.publishChannel = make(chan PropertyMessage, 100)
 	device.connectChannel = make(chan bool, 16)
 	device.tokenChannel = make(chan *mqtt.Token, 256)
-	device.unsubscribes = make([]func(), 0,10)
+	device.unsubscribes = make([]func(), 0, 10)
 	device.globalHandler = nil
 	device.broadcastHandler = nil
 
@@ -286,6 +286,6 @@ runLoop:
 	d.clientOptions.UnsetWill()
 	d.client.Disconnect(150) // disconnect in 0.15 seconds.
 	d.configDone = false
-	waitChannel <- true	// signal we are done!
+	waitChannel <- true // signal we are done!
 	close(waitChannel)
 }
