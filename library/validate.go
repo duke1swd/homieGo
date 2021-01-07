@@ -3,6 +3,10 @@ package homie
 // Validates that an ID conforms to the Homie standard.
 
 func validate(inputId string, attr bool) string {
+	if len(inputId) < 1 {
+		panic("Invalid use of null identifier")
+	}
+
 	bytes := []byte(inputId)
 
 	if bytes[0] == '-' {

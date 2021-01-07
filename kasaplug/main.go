@@ -41,7 +41,7 @@ type kasaDevice struct {
 
 const defaultNetwork = "192.168.1.0/24"
 const defaultBroadcastPeriod = "10" // in seconds
-const defaultTopicBase = ""
+const defaultTopicBase = "devices"
 const kasaPort = 9999
 const statusQuery = "{\"system\":{\"get_sysinfo\":null},\"emeter\":{\"get_realtime\":null}}"
 const setOn = "{\"system\":{\"set_relay_state\":{\"state\":1}}}"
@@ -86,10 +86,12 @@ func init() {
 	}
 	broadcastPeriod = time.Duration(n) * time.Second
 
-	if t, ok := os.LookupEnv("HOMIETOPIC"); ok {
-		topicBase = defaultTopicBase
-	} else {
+	if debug {
+		topicBase = "kasadebug"
+	} else if t, ok := os.LookupEnv("HOMIETOPIC"); ok {
 		topicBase = t
+	} else {
+		topicBase = defaultTopicBase
 	}
 
 	statusQueryB = []byte(statusQuery)
@@ -139,6 +141,10 @@ func printData(data []byte) {
 
 // Broadcast a packet.  Packet must already be encrypted
 func broadcast(data []byte) {
+
+	if debugV {
+		fmt.Println("Broadcast")
+	}
 
 	_, err := packetConn.WriteTo(data, broadcastAddr)
 	if err != nil {
@@ -264,8 +270,19 @@ func listenerSysinfo(c context.Context, output chan map[string]interface{}) {
 
 // converts a plug's nickname into a valid homie id and name.
 func homieName(alias string) (string, string) {
-	// TODO make this routine validate names and IDs
-	return alias, alias
+	id := make([]byte, len(alias))
+
+	for i, b := range []byte(alias) {
+		switch {
+		case (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9'):
+			id = append(id, b)
+		case b >= 'A' && b <= 'Z':
+			id = append(id, b-('a'-'A'))
+		case i > 0 && (b == '-' || b == ' ' || b == '_'):
+			id = append(id, '-')
+		}
+	}
+	return string(id), alias
 }
 
 // Convert the json stuff that came back from the tp-link to our kasaDevice
@@ -280,14 +297,14 @@ func tp2kasa(gmap map[string]interface{}) (*kasaDevice, bool) {
 		}
 		return nil, false
 	}
-	name, ok := a.(string)
+	alias, ok := a.(string)
 	if !ok {
 		if debug {
 			fmt.Printf("gmap alias is not a string (!)\n")
 		}
 		return nil, false
 	}
-	kasa.id, kasa.name = homieName(name)
+	kasa.id, kasa.name = homieName(alias)
 
 	ad, ok := gmap["addr"]
 	if !ok {
@@ -616,9 +633,10 @@ func broadcaster(c context.Context) {
 
 func main() {
 	setupBroadcastAddr(kasaPort)
+	var err error
 
 	// Create a packet connection
-	packetConn, err := net.ListenPacket("udp", "") // listen for UDP on unspecified port
+	packetConn, err = net.ListenPacket("udp", "") // listen for UDP on unspecified port
 	if err != nil {
 		panic(err)
 	}
@@ -631,10 +649,20 @@ func main() {
 
 	go listenerSysinfo(c, deviceChannel)
 
+	time.Sleep(time.Second) // XXX force listner to run before code below
+
 	// Set up periodic broadcasts
 	go broadcaster(c)
 
 	// Collect the resposes
 
+	if debugV {
+		fmt.Printf("running\n")
+	}
+
 	run(c, deviceChannel)
+
+	if debugV {
+		fmt.Printf("run returned\n")
+	}
 }
