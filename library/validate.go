@@ -1,5 +1,9 @@
 package homie
 
+import (
+	"fmt"
+)
+
 // Validates that an ID conforms to the Homie standard.
 
 func validate(inputId string, attr bool) string {
@@ -20,7 +24,7 @@ func validate(inputId string, attr bool) string {
 			(b < '0' || b > '9') &&
 			(i != 0 || b != '$' || !attr) &&
 			b != '-' {
-			panic("Invalid character in identifier")
+			panic(fmt.Sprintf("Invalid character %c (%d) in identifier", b, b))
 		}
 	}
 

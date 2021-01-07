@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -77,6 +78,9 @@ func init() {
 	}
 
 	s := defaultBroadcastPeriod
+	if debug {
+		s = "1" // one second
+	}
 	if d, ok := os.LookupEnv("BROADCASTPERIOD"); ok {
 		s = d
 	}
@@ -144,6 +148,7 @@ func broadcast(data []byte) {
 
 	if debugV {
 		fmt.Println("Broadcast")
+		fmt.Printf("\tAddr = %v, port = %v\n", broadcastAddr.IP, broadcastAddr.Port)
 	}
 
 	_, err := packetConn.WriteTo(data, broadcastAddr)
@@ -270,19 +275,17 @@ func listenerSysinfo(c context.Context, output chan map[string]interface{}) {
 
 // converts a plug's nickname into a valid homie id and name.
 func homieName(alias string) (string, string) {
-	id := make([]byte, len(alias))
+	id := make([]byte, 0, len(alias))
 
 	for i, b := range []byte(alias) {
 		switch {
-		case (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9'):
+		case (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z'):
 			id = append(id, b)
-		case b >= 'A' && b <= 'Z':
-			id = append(id, b-('a'-'A'))
 		case i > 0 && (b == '-' || b == ' ' || b == '_'):
 			id = append(id, '-')
 		}
 	}
-	return string(id), alias
+	return strings.ToLower(string(id)), alias
 }
 
 // Convert the json stuff that came back from the tp-link to our kasaDevice
@@ -397,6 +400,10 @@ func (kasa *kasaDevice) setValue(value string) {
 func createHomieDevice(kasa *kasaDevice) {
 	var c context.Context
 
+	if debug {
+		fmt.Printf("Creating device for %s with ID %s\n", kasa.name, kasa.id)
+	}
+
 	kasa.hDevice = homie.NewDevice(kasa.id, kasa.name)
 	if len(topicBase) > 0 {
 		kasa.hDevice.SetTopicBase(topicBase)
@@ -414,6 +421,9 @@ func createHomieDevice(kasa *kasaDevice) {
 }
 
 func destroyHomieDevice(kasa *kasaDevice) {
+	if debug {
+		fmt.Printf("Destroying kasa device %s\n", kasa.name)
+	}
 	kasa.cancelFunction()
 	for _ = range kasa.waitChan {
 	}
@@ -631,9 +641,16 @@ func broadcaster(c context.Context) {
 	}
 }
 
+func nilCancel() {
+}
+
 func main() {
 	setupBroadcastAddr(kasaPort)
-	var err error
+	var (
+		err error
+		c   context.Context
+		cfl context.CancelFunc
+	)
 
 	// Create a packet connection
 	packetConn, err = net.ListenPacket("udp", "") // listen for UDP on unspecified port
@@ -644,12 +661,15 @@ func main() {
 
 	deviceChannel := make(chan map[string]interface{}, 100)
 
-	c, cfl := context.WithTimeout(context.Background(), time.Duration(10)*time.Second)
-	defer cfl()
+	if debug {
+		c, cfl = context.WithTimeout(context.Background(), time.Duration(10)*time.Second)
+		defer cfl()
+	} else {
+		c = context.Background()
+		cfl = nilCancel
+	}
 
 	go listenerSysinfo(c, deviceChannel)
-
-	time.Sleep(time.Second) // XXX force listner to run before code below
 
 	// Set up periodic broadcasts
 	go broadcaster(c)
