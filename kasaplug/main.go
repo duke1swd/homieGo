@@ -404,20 +404,34 @@ func createHomieDevice(kasa *kasaDevice) {
 		fmt.Printf("Creating device for %s with ID %s\n", kasa.name, kasa.id)
 	}
 
+	// create the device
 	kasa.hDevice = homie.NewDevice(kasa.id, kasa.name)
 	if len(topicBase) > 0 {
 		kasa.hDevice.SetTopicBase(topicBase)
 	}
+
+	// it has one node
 	node := kasa.hDevice.NewNode("outlet", "outlet", "relay", nil)
 	property := node.Advertise("on", "on", homie.DtString)
 	property.Settable(func(d *homie.Device, n *homie.Node, p *homie.Property, value string) bool {
 		kasa.setValue(value)
 		return true
 	})
+
+	// the node has one property
 	kasa.outletProperty = property
 	c, kasa.cancelFunction = context.WithCancel(context.Background())
 	kasa.waitChan = make(chan bool, 1)
+
+	// start the device go routine
 	go kasa.hDevice.RunWithContext(c, kasa.waitChan)
+
+	// publish the device's status
+	s := "false"
+	if kasa.on {
+		s = "true"
+	}
+	property.SetProperty().Send(s)
 }
 
 func destroyHomieDevice(kasa *kasaDevice) {
