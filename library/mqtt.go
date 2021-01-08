@@ -21,7 +21,7 @@ func (d *Device) mqttSetup() {
 		d.clientOptions = mqtt.NewClientOptions()
 	}
 	d.clientOptions.SetCleanSession(false)
-	d.clientOptions.AddBroker("tcp://192.168.1.13:1883")
+	d.clientOptions.AddBroker(d.mqttBroker)
 	d.clientOptions.SetClientID(mqttClientIDPrefix + "-" + d.id)
 	d.clientOptions.SetAutoReconnect(true)
 	d.clientOptions.SetConnectRetry(true)

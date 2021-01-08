@@ -43,6 +43,7 @@ func NewDevice(id, name string) *Device {
 	device.broadcastHandler = nil
 
 	device.clientOptions = nil
+	device.mqttBroker = defaultMqttBroker
 	device.client = nil
 
 	devices[id] = &device
@@ -57,6 +58,13 @@ func (d *Device) Destroy() {
 		panic("Cannot destroy running device " + d.id)
 	}
 	delete(devices, d.id)
+}
+
+func (d *Device) SetMqttBroker(broker string) {
+	if d.configDone {
+		panic("Cannot set mqtt broker on running device " + d.id)
+	}
+	d.mqttBroker = broker
 }
 
 func (d *Device) SetGlobalHandler(handler func(d *Device, n *Node, p *Property, value string) bool) {

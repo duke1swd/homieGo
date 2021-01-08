@@ -7,6 +7,7 @@ import (
 
 const mqttClientIDPrefix = "homieGo"
 const defaultTopicBase = "homie"
+const defaultMqttBroker = "tcp://127.0.0.1:1883"
 
 // Type hierarchy
 
@@ -80,6 +81,7 @@ type Device struct {
 	globalHandler    func(d *Device, n *Node, p *Property, value string) bool
 	broadcastHandler func(d *Device, level, value string)
 	loop             func(d *Device)
+	mqttBroker       string
 	clientOptions    *mqtt.ClientOptions
 	client           mqtt.Client
 

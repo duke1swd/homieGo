@@ -53,6 +53,7 @@ var (
 	debugV            bool
 	network           string
 	lostDeviceTimeout time.Duration
+	mqttBroker        string
 )
 
 var (
@@ -89,6 +90,10 @@ func init() {
 		n, _ = strconv.Atoi(defaultBroadcastPeriod)
 	}
 	broadcastPeriod = time.Duration(n) * time.Second
+
+	if s, ok := os.LookupEnv("MQTTBROKER"); ok {
+		mqttBroker = s
+	}
 
 	if debug {
 		topicBase = "kasadebug"
@@ -408,6 +413,9 @@ func createHomieDevice(kasa *kasaDevice) {
 	kasa.hDevice = homie.NewDevice(kasa.id, kasa.name)
 	if len(topicBase) > 0 {
 		kasa.hDevice.SetTopicBase(topicBase)
+	}
+	if len(mqttBroker) > 0 {
+		kasa.hDevice.SetMqttBroker(mqttBroker)
 	}
 
 	// it has one node
