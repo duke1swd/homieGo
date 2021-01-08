@@ -9,7 +9,7 @@ import (
 // Actual publication is deferred out of the event handler.
 // Publication happens in Device.Run().
 
-func (p Property) Settable(handler func(d *Device, n *Node, p *Property, value string) bool) {
+func (p *Property) Settable(handler func(d *Device, n *Node, p *Property, value string) bool) {
 	p.settable = true
 	p.handler = handler
 }
@@ -101,7 +101,9 @@ func (p *Property) processConnect() {
 
 	// Is this property settable?  If so, subscribe to the set message.
 	d := n.device
-	d.client.Subscribe(p.topic("set"), 1, func(c mqtt.Client, msg mqtt.Message) { p.setEvent(string(msg.Payload())) })
+	d.client.Subscribe(p.topic("set"), 1, func(c mqtt.Client, msg mqtt.Message) {
+		p.setEvent(string(msg.Payload()))
+	})
 	// Also subscribe to the value itself, to get the initial value
 	valueTopic := p.node.topic(p.id)
 	d.client.Subscribe(valueTopic, 1, func(c mqtt.Client, msg mqtt.Message) {
