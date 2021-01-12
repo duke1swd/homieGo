@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,8 @@ type kasaDevice struct {
 
 const defaultNetwork = "192.168.1.0/24"
 const defaultBroadcastPeriod = "10" // in seconds
+const defaultLogDirectory = "/var/log"
+const logFileName = "HomeAutomationLog"
 const defaultTopicBase = "devices"
 const kasaPort = 9999
 const statusQuery = "{\"system\":{\"get_sysinfo\":null},\"emeter\":{\"get_realtime\":null}}"
@@ -54,6 +57,7 @@ var (
 	network           string
 	lostDeviceTimeout time.Duration
 	mqttBroker        string
+	fullLogFileName   string
 )
 
 var (
@@ -61,6 +65,8 @@ var (
 )
 
 func init() {
+	var logDirectory string
+
 	flag.BoolVar(&debug, "d", false, "debugging")
 	flag.BoolVar(&debugV, "D", false, "extreme debugging")
 
@@ -94,6 +100,13 @@ func init() {
 	if s, ok := os.LookupEnv("MQTTBROKER"); ok {
 		mqttBroker = s
 	}
+
+	if l, ok := os.LookupEnv("LOGDIR"); !ok {
+		logDirectory = l
+	} else {
+		logDirectory = defaultLogDirectory
+	}
+	fullLogFileName = filepath.Join(logDirectory, logFileName)
 
 	if debug {
 		topicBase = "kasadebug"
@@ -158,7 +171,7 @@ func broadcast(data []byte) {
 
 	_, err := packetConn.WriteTo(data, broadcastAddr)
 	if err != nil {
-		log.Printf("Broadcast to %v failed with error %v", broadcastAddr, err)
+		logMessage(fmt.Sprintf("Broadcast to %v failed with error %v", broadcastAddr, err))
 	}
 }
 
@@ -167,7 +180,7 @@ func unicast(data []byte, kasa *kasaDevice) {
 
 	_, err := packetConn.WriteTo(data, kasa.addr)
 	if err != nil {
-		log.Printf("Unicast to %v failed with error %v", kasa.addr, err)
+		logMessage(fmt.Sprintf("Unicast to %v failed with error %v", kasa.addr, err))
 	}
 }
 
@@ -389,7 +402,7 @@ func (kasa *kasaDevice) setValue(value string) {
 	// If we don't understand the command, do nothing
 	newVal, ok := namesForOnOff[value]
 	if !ok {
-		log.Printf("Unknown command %s", value)
+		logMessage(fmt.Sprintf("Unknown command %s", value))
 		return
 	}
 
@@ -405,9 +418,7 @@ func (kasa *kasaDevice) setValue(value string) {
 func createHomieDevice(kasa *kasaDevice) {
 	var c context.Context
 
-	if debug {
-		fmt.Printf("Creating device for %s with ID %s\n", kasa.name, kasa.id)
-	}
+	logMessage(fmt.Sprintf("Creating device for %s with ID %s\n", kasa.name, kasa.id))
 
 	// create the device
 	kasa.hDevice = homie.NewDevice(kasa.id, kasa.name)
@@ -443,9 +454,8 @@ func createHomieDevice(kasa *kasaDevice) {
 }
 
 func destroyHomieDevice(kasa *kasaDevice) {
-	if debug {
-		fmt.Printf("Destroying kasa device %s\n", kasa.name)
-	}
+
+	logMessage(fmt.Sprintf("Destroying kasa device %s\n", kasa.name))
 	kasa.cancelFunction()
 	for _ = range kasa.waitChan {
 	}
@@ -532,7 +542,7 @@ func setRelayState(k *kasaDevice, state bool) {
 	}
 
 	if _, err := packetConn.WriteTo(command, k.addr); err != nil {
-		log.Printf("Send command to %s (%v) failed with error %v", k.name, k.addr, err)
+		logMessage(fmt.Sprintf("Send command to %s (%v) failed with error %v", k.name, k.addr, err))
 	}
 }
 
@@ -706,5 +716,25 @@ func main() {
 
 	if debugV {
 		fmt.Printf("run returned\n")
+	}
+}
+
+func logMessage(m string) {
+	f, err := os.OpenFile(fullLogFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("Logger: Cannot open for writing log file %s. err = %v", fullLogFileName, err)
+		return
+	}
+	defer f.Close()
+
+	formattedMsg := time.Now().Format("Mon Jan 2 15:04:05 2006") + "  " + m + "\n"
+
+	_, err = f.WriteString(formattedMsg)
+	if err != nil {
+		log.Printf("Logger: Error writing to file %s.  err = %v\n", fullLogFileName, err)
+		return
+	}
+	if debug {
+		fmt.Print(formattedMsg)
 	}
 }
