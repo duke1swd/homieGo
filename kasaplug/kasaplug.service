@@ -5,6 +5,7 @@ After=network-online.target
 [Service]
 Environment=MQTTBROKER=tcp://DanielPi3:1883
 Environment=NETWORK=192.168.2.0/24
+Environment=LOGDIR=/var/log
 Type=simple
 Restart=always
 ExecStart=/usr/local/bin/kasaplug
