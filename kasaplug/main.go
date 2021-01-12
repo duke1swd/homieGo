@@ -101,7 +101,7 @@ func init() {
 		mqttBroker = s
 	}
 
-	if l, ok := os.LookupEnv("LOGDIR"); !ok {
+	if l, ok := os.LookupEnv("LOGDIR"); ok {
 		logDirectory = l
 	} else {
 		logDirectory = defaultLogDirectory
@@ -171,7 +171,7 @@ func broadcast(data []byte) {
 
 	_, err := packetConn.WriteTo(data, broadcastAddr)
 	if err != nil {
-		logMessage(fmt.Sprintf("Broadcast to %v failed with error %v", broadcastAddr, err))
+		logMessage(fmt.Sprintf("Kasaplug: Broadcast to %v failed with error %v", broadcastAddr, err))
 	}
 }
 
@@ -180,7 +180,7 @@ func unicast(data []byte, kasa *kasaDevice) {
 
 	_, err := packetConn.WriteTo(data, kasa.addr)
 	if err != nil {
-		logMessage(fmt.Sprintf("Unicast to %v failed with error %v", kasa.addr, err))
+		logMessage(fmt.Sprintf("Kasaplug: Unicast to %v failed with error %v", kasa.addr, err))
 	}
 }
 
@@ -402,7 +402,7 @@ func (kasa *kasaDevice) setValue(value string) {
 	// If we don't understand the command, do nothing
 	newVal, ok := namesForOnOff[value]
 	if !ok {
-		logMessage(fmt.Sprintf("Unknown command %s", value))
+		logMessage(fmt.Sprintf("Kasaplug: Unknown command %s", value))
 		return
 	}
 
@@ -418,7 +418,7 @@ func (kasa *kasaDevice) setValue(value string) {
 func createHomieDevice(kasa *kasaDevice) {
 	var c context.Context
 
-	logMessage(fmt.Sprintf("Creating device for %s with ID %s\n", kasa.name, kasa.id))
+	logMessage(fmt.Sprintf("Kasaplug: Creating device for %s with ID %s", kasa.name, kasa.id))
 
 	// create the device
 	kasa.hDevice = homie.NewDevice(kasa.id, kasa.name)
@@ -455,7 +455,7 @@ func createHomieDevice(kasa *kasaDevice) {
 
 func destroyHomieDevice(kasa *kasaDevice) {
 
-	logMessage(fmt.Sprintf("Destroying kasa device %s\n", kasa.name))
+	logMessage(fmt.Sprintf("Kasaplug: Destroying kasa device %s", kasa.name))
 	kasa.cancelFunction()
 	for _ = range kasa.waitChan {
 	}
@@ -542,7 +542,7 @@ func setRelayState(k *kasaDevice, state bool) {
 	}
 
 	if _, err := packetConn.WriteTo(command, k.addr); err != nil {
-		logMessage(fmt.Sprintf("Send command to %s (%v) failed with error %v", k.name, k.addr, err))
+		logMessage(fmt.Sprintf("Kasaplug: Send command to %s (%v) failed with error %v", k.name, k.addr, err))
 	}
 }
 
@@ -554,9 +554,7 @@ func callTCP(device kasaDevice, call string) (interface{}, bool) {
 
 	conn, err := dialer.Dial("tcp", device.addr.String())
 	if err != nil {
-		if debug {
-			fmt.Printf("dial out to device via tcp failed: %v\n", err)
-		}
+		logMessage(fmt.Sprintf("Kasaplug: dial out to device via tcp failed: %v", err))
 		return nil, false
 	}
 	defer conn.Close()
@@ -711,6 +709,7 @@ func main() {
 	if debugV {
 		fmt.Printf("running\n")
 	}
+	logMessage("Kasaplug: Running")
 
 	run(c, deviceChannel)
 
