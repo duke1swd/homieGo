@@ -456,6 +456,7 @@ func createHomieDevice(kasa *kasaDevice) {
 func destroyHomieDevice(kasa *kasaDevice) {
 
 	logMessage(fmt.Sprintf("Kasaplug: Destroying kasa device %s", kasa.name))
+	delete(kasaMap, kasa.uid)
 	kasa.cancelFunction()
 	for _ = range kasa.waitChan {
 	}
