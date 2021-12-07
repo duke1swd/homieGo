@@ -508,6 +508,7 @@ func run(c context.Context, deviceChannel chan map[string]interface{}) {
 
 				// Mark alive
 				oldK.lastSeen = time.Now()
+				kasaMap[kasa.uid] = oldK
 			} else {
 				// New device.  Create it
 				createHomieDevice(kasa)
