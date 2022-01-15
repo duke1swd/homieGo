@@ -123,7 +123,7 @@ func init() {
 	setOffB = []byte(setOff)
 	tpEncode(setOffB)
 
-	lostDeviceTimeout = broadcastPeriod * time.Duration(5)
+	lostDeviceTimeout = broadcastPeriod * time.Duration(10)
 	if debug {
 		lostDeviceTimeout = time.Second
 	}
