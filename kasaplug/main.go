@@ -20,6 +20,7 @@ import (
 var (
 	broadcastAddr   *net.UDPAddr
 	broadcastPeriod time.Duration
+	debugRunLength  time.Duration
 	topicBase       string
 	statusQueryB    []byte
 	setOnB          []byte
@@ -43,6 +44,7 @@ type kasaDevice struct {
 
 const defaultNetwork = "192.168.1.0/24"
 const defaultBroadcastPeriod = "10" // in seconds
+const defaultDebugRunLength = "10"  // in seconds
 const defaultLogDirectory = "/var/log"
 const logFileName = "HomeAutomationLog"
 const defaultTopicBase = "devices"
@@ -97,6 +99,16 @@ func init() {
 	}
 	broadcastPeriod = time.Duration(n) * time.Second
 
+	s = defaultDebugRunLength
+	if d, ok := os.LookupEnv("DEBUGRUNLENGTH"); ok {
+		s = d
+	}
+	n, err = strconv.Atoi(s)
+	if err != nil {
+		n, _ = strconv.Atoi(defaultDebugRunLength)
+	}
+	debugRunLength = time.Duration(n) * time.Second
+
 	if s, ok := os.LookupEnv("MQTTBROKER"); ok {
 		mqttBroker = s
 	}
@@ -124,9 +136,6 @@ func init() {
 	tpEncode(setOffB)
 
 	lostDeviceTimeout = broadcastPeriod * time.Duration(10)
-	if debug {
-		lostDeviceTimeout = time.Second
-	}
 }
 
 func tpEncode(data []byte) {
@@ -694,7 +703,7 @@ func main() {
 	deviceChannel := make(chan map[string]interface{}, 100)
 
 	if debug {
-		c, cfl = context.WithTimeout(context.Background(), time.Duration(10)*time.Second)
+		c, cfl = context.WithTimeout(context.Background(), debugRunLength)
 		defer cfl()
 	} else {
 		c = context.Background()

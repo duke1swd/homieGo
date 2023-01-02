@@ -20,7 +20,11 @@ func (d *Device) mqttSetup() {
 	if d.clientOptions == nil {
 		d.clientOptions = mqtt.NewClientOptions()
 	}
-	d.clientOptions.SetCleanSession(false)
+
+	// d.clientOptions.SetPingTimeout(1 * time.Second)	// default of 10 seconds is fine
+
+	d.clientOptions.SetKeepAlive(60 * time.Second)
+	d.clientOptions.SetCleanSession(true) // XXX	not sure which I want, but this way works, 'false' doesn't
 	d.clientOptions.AddBroker(d.mqttBroker)
 	d.clientOptions.SetClientID(mqttClientIDPrefix + "-" + d.id)
 	d.clientOptions.SetAutoReconnect(true)
