@@ -1,0 +1,3 @@
+#!/bin/sh
+cd ~swd/containers/kasaplug
+docker build --no-cache -f Dockerfile -t kasaplug .

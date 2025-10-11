@@ -1,0 +1,12 @@
+FROM golang:latest
+RUN mkdir /root/.ssh
+WORKDIR /root
+RUN apt update -y
+RUN apt install -y vim
+COPY id_rsa .ssh/id_rsa
+RUN git config --global credential.helper store
+RUN git config --global user.name duke1swd
+RUN git config --global user.email "swd@pobox.com"
+#RUN git clone git@github.com:duke1swd/hom
+
+ENTRYPOINT [ "/bin/bash" ]
