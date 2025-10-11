@@ -1,0 +1,6 @@
+#!/bin/sh
+MQTTBROKER=tcp://DanielPi3:1883
+NETWORK=192.168.2.0/24
+LOGDIR=.
+export MQTTBROKER NETWORK LOGDIR
+./kasaplug -D
