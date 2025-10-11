@@ -730,14 +730,24 @@ func main() {
 }
 
 func logMessage(m string) {
+	formattedMsg := time.Now().Format("Mon Jan 2 15:04:05 2006") + "  " + m + "\n"
+
+	// when containerized, log messages should go to stdout
+	if fullLogFileName[0] == '-' {
+		fmt.Print(formattedMsg)
+	} else {
+	// when running as a daemon, log files should go in the /var/log directory
+		logMessageFile(formattedMsg)
+	}
+}
+
+func logMessageFile(formattedMsg string) {
 	f, err := os.OpenFile(fullLogFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Printf("Logger: Cannot open for writing log file %s. err = %v", fullLogFileName, err)
 		return
 	}
 	defer f.Close()
-
-	formattedMsg := time.Now().Format("Mon Jan 2 15:04:05 2006") + "  " + m + "\n"
 
 	_, err = f.WriteString(formattedMsg)
 	if err != nil {
